@@ -1,0 +1,39 @@
+{
+  "name": "codegraph-mcp",
+  "version": "0.1.0",
+  "description": "Dependency-free MCP server exposing a codebase's symbol graph and a symbol-aware edit loop as first-class agent tools.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "codegraph",
+    "code-navigation",
+    "ai-agent",
+    "llm",
+    "sqlite"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "codegraph-mcp": "codegraph-ext/codegraph-mcp.cjs"
+  },
+  "scripts": {
+    "cg:mcp": "node codegraph-ext/codegraph-mcp.cjs",
+    "cg:build-body-index": "node codegraph-ext/build-body-index.cjs",
+    "cg:augment": "node codegraph-ext/augment.cjs",
+    "cg:refresh": "node codegraph-ext/build-body-index.cjs && node codegraph-ext/augment.cjs",
+    "cg:locate": "node codegraph-ext/query.cjs locate",
+    "cg:plan": "node codegraph-ext/query.cjs plan",
+    "cg:impact": "node codegraph-ext/query.cjs impact",
+    "cg:read": "node codegraph-ext/read-context.cjs",
+    "cg:apply": "node codegraph-ext/apply-edits.cjs",
+    "cg:apply-at-site": "node codegraph-ext/apply-at-site.cjs",
+    "cg:verify": "node codegraph-ext/verify-affected.cjs",
+    "cg:test-one": "node codegraph-ext/test-one.cjs",
+    "cg:graph": "node codegraph-ext/cg-graph.cjs",
+    "cg:bench": "node codegraph-ext/token-bench.cjs",
+    "cg:install-hook": "node codegraph-ext/install-hook.cjs"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "$schema": "Hand-authored institutional memory for codegraph overlay #6 (conventions/decisions/dedupe). Committed to git; the .codegraph DB is gitignored + regenerated, so THIS file is the durable source of truth. Re-applied by augment.cjs after every `codegraph index`. Start empty; add entries as your team learns.",
+  "conventions": [],
+  "decisions": [],
+  "dedupe": []
+}
