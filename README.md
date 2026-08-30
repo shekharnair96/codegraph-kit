@@ -87,6 +87,13 @@ is safe everywhere else. Uninstall with `--uninstall`.
 
 ## Why it matters
 
+A controlled A/B experiment on a real production TypeScript/React codebase found that giving a
+coding agent this graph — **instead** of letting it grep/read files — turned the cheaper model
+(Sonnet) from the *most expensive, worst-behaving* option into the **cost-optimal** one: ~5×
+cheaper than non-KG Sonnet and ~4× cheaper than KG Opus, at matching correctness. The full
+write-up (method, results, significance tests, and the tuning log) is in
+[`docs/experiment.md`](docs/experiment.md).
+
 Reach for [`token-bench.cjs`](codegraph-ext/token-bench.cjs) to quantify the win on **your** repo.
 It's zero-config: it auto-discovers the highest-fan-in questions (the most-mocked module, the
 most-covered source file, the widest prop surface, a documented symbol) and, for each, compares:
