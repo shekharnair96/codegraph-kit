@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeGraph A/B Experiment — Cutting Agent Cost with a Knowledge Graph</title>
+<style>
+:root { --fg:#1b1f24; --muted:#57606a; --line:#d0d7de; --accent:#0969da; --code-bg:#f6f8fa; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--fg); line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 48px 32px; }
+h1 { font-size: 30px; border-bottom: 2px solid var(--line); padding-bottom: .3em; }
+h2 { font-size: 22px; border-bottom: 1px solid var(--line); padding-bottom: .3em; margin-top: 2em; }
+h3 { font-size: 17px; margin-top: 1.6em; }
+p, li { font-size: 14.5px; }
+em { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; }
+code { background: var(--code-bg); padding: .15em .4em; border-radius: 4px; font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 1.2em 0; font-size: 13px; }
+th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; }
+th { background: var(--code-bg); }
+tr:nth-child(even) td { background: #fafbfc; }
+blockquote { margin: 1em 0; padding: .4em 1em; color: var(--muted);
+  border-left: 4px solid var(--line); background: #fafbfc; }
+img { max-width: 100%; display: block; margin: 1.4em auto; border: 1px solid var(--line); border-radius: 8px; }
+hr { border: none; border-top: 1px solid var(--line); margin: 2.4em 0; }
+@media print {
+  body { padding: 0; max-width: none; font-size: 11pt; }
+  h2 { page-break-after: avoid; }
+  table, pre, img, blockquote { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<h1 id="codegraph-ab-experiment-cutting-agent-cost-with-a-knowledge-graph">CodeGraph A/B Experiment — Cutting Agent Cost with a Knowledge Graph</h1>
+<p><em>A production TypeScript/React microapp · knowledge-graph-assisted coding agents · results + playbook</em></p>
+<h2 id="tldr-for-the-room">TL;DR (for the room)</h2>
+<p>We tested whether giving a coding agent a <strong>knowledge graph (KG)</strong> of the codebase — instead
+of letting it grep/read files — makes it cheaper and faster. Same task, same repo, every kept
+result correct + green.</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th style="text-align: right;">tool-calls</th>
+<th style="text-align: right;">tokens</th>
+<th style="text-align: right;"><strong>cost (cached)</strong></th>
+<th style="text-align: right;">cost (naive)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sonnet · <strong>no KG</strong></td>
+<td style="text-align: right;">84</td>
+<td style="text-align: right;">8.05M</td>
+<td style="text-align: right;">$4.39</td>
+<td style="text-align: right;">$24.86</td>
+</tr>
+<tr>
+<td>Opus · <strong>no KG</strong></td>
+<td style="text-align: right;">33</td>
+<td style="text-align: right;">1.56M</td>
+<td style="text-align: right;">$5.81</td>
+<td style="text-align: right;">$24.49</td>
+</tr>
+<tr>
+<td><strong>Sonnet · KG-only</strong></td>
+<td style="text-align: right;"><strong>24</strong></td>
+<td style="text-align: right;"><strong>0.75M</strong></td>
+<td style="text-align: right;"><strong>$0.86</strong></td>
+<td style="text-align: right;"><strong>$2.51</strong></td>
+</tr>
+<tr>
+<td>Opus · KG-only</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">0.49M</td>
+<td style="text-align: right;">$3.43</td>
+<td style="text-align: right;">$8.35</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Headline:</strong> the KG turned Sonnet from the <em>most expensive, worst-behaving</em> option into the
+<strong>cost-optimal</strong> one — <strong>~5× cheaper than non-KG Sonnet and ~4× cheaper than KG Opus</strong>, while
+matching them on correctness.</p>
+<ul>
+<li><strong>Optimize for cost → Sonnet + KG</strong> ($0.86).</li>
+<li><strong>Optimize for fewest turns/latency → Opus + KG</strong> (18 calls) — but ~4× the price.</li>
+</ul>
+<hr />
+<h2 id="1-the-task-identical-across-all-cells">1. The task (identical across all cells)</h2>
+<blockquote>
+<p>In the Item Sales widget, change the primary graph series color to <code>#FF6B6B</code> and set the line
+width to <code>3px</code>. This affects the default/daily chart, the real-time ("Today") chart, and the
+compare-mode chart. Do <strong>not</strong> touch the dashed comparison series. Fix any tests the change
+breaks.</p>
+</blockquote>
+<p>Why this task: it's a realistic "small change, shared code, spooky test fallout" job. The color
+lives in a shared source-of-truth (<code>METRIC_SERIES_COLORS</code> / <code>getMetricColors</code>) consumed by three
+chart paths, and the change breaks a parameterized <code>test.each</code> invariant — exactly the kind of
+thing that makes agents flail.</p>
+<hr />
+<h2 id="2-method">2. Method</h2>
+<ul>
+<li><strong>2×2 matrix:</strong> model (Sonnet / Opus) × tooling (naive grep+read / KG-only).</li>
+<li><strong>KG-only</strong> = the agent has <strong>no grep, no read_file, no list_files, no shell</strong>. All discovery
+  goes through a CodeGraph MCP server (<code>locate</code>, <code>plan</code>, <code>trace</code>, <code>impact</code>, <code>read</code>, <code>apply</code>,
+  <code>verify</code>). Edits + test-runs happen through the same tools.</li>
+<li>Each cell run on an identical clone (same source baseline, same tests), verified green
+  (Jest), and scored from the recorded session (tool-calls + token usage).</li>
+<li><strong>Costs</strong> use each model's real Anthropic rates and the <strong>actual cache buckets</strong> the API
+  reported (see §5): Sonnet 3 / 15 / 3.75 / 0.30, Opus 15 / 75 / 18.75 / 1.50 ($/M for
+  input / output / cache-write / cache-read).</li>
+</ul>
+<hr />
+<h2 id="3-the-big-finding-kg-preferred-doesnt-work-it-has-to-be-kg-only">3. The big finding: KG-<em>preferred</em> doesn't work — it has to be KG-<em>only</em></h2>
+<p>We also tried a <strong>KG-preferred (suggestive)</strong> agent: KG tools available, but grep/read/shell
+left in as a fallback. It sprawled and we killed it. The session tells the story:</p>
+<blockquote>
+<p><strong>46 tool calls, only 4 were KG</strong> — the rest were <code>grep ×26</code>, <code>read_file ×14</code>, <code>list_files ×2</code>.</p>
+</blockquote>
+<p>Given the choice, the model bolts straight back to its grep/read comfort zone and <strong>ignores the
+graph</strong>, reverting to the ~84-call non-KG baseline. <strong>The starvation is the mechanism, not just
+a measurement trick.</strong> Ship KG-<em>only</em> agents.</p>
+<hr />
+<h2 id="4-how-we-got-sonnetkg-from-29-24-turns-the-iteration-log">4. How we got Sonnet+KG from 29 → 24 turns (the iteration log)</h2>
+<p>The first KG-only Sonnet run was fine but not great. We instrumented every run, found the
+bottleneck, shipped a tooling fix, re-ran. The journey (Sonnet, KG-only):</p>
+<table>
+<thead>
+<tr>
+<th>iteration</th>
+<th style="text-align: right;">turns</th>
+<th style="text-align: right;">tokens</th>
+<th>what changed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>verifyhydrate-1</td>
+<td style="text-align: right;">29</td>
+<td style="text-align: right;">1.32M</td>
+<td>baseline: verify hydrates the failing assertion into the verdict</td>
+</tr>
+<tr>
+<td>locateedge-1</td>
+<td style="text-align: right;">45</td>
+<td style="text-align: right;">3.22M</td>
+<td>regression — enriched <code>locate</code> to show caller/referencer names; a <code>test.each</code> tail meltdown</td>
+</tr>
+<tr>
+<td>testblock-1</td>
+<td style="text-align: right;">23</td>
+<td style="text-align: right;">1.84M</td>
+<td>verify hydrates the <strong>enclosing test block</strong> (<code>test.each</code> structure) + <code>test_one</code> escape hatch</td>
+</tr>
+<tr>
+<td>discovery-1</td>
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">0.86M</td>
+<td>capped <code>locate</code> payload (5 candidates), added a confidence signal + forward <code>trace</code></td>
+</tr>
+<tr>
+<td><strong>locbudget-1</strong></td>
+<td style="text-align: right;"><strong>24</strong></td>
+<td style="text-align: right;"><strong>0.75M</strong></td>
+<td><strong>best</strong> — server-side locate budget + looser concept-strong signal</td>
+</tr>
+<tr>
+<td>discbudget-1</td>
+<td style="text-align: right;">28</td>
+<td style="text-align: right;">0.98M</td>
+<td>regression — shared discovery budget; reverted (see lesson below)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-actually-moved-the-needle-durable-wins">What actually moved the needle (durable wins)</h3>
+<ol>
+<li><strong>Compact tool output.</strong> <code>locate</code> returned ~15 candidates @ ~9KB <em>every</em> call, re-transmitted
+   each turn. Capping it to the top few + hydrating only the best candidate cut a large,
+   turn-multiplied token tax.</li>
+<li><strong>Verify hydration.</strong> When a test fails, the verdict now includes the <strong>enclosing test block</strong>
+   (e.g. the whole <code>test.each(METRICS)(...)</code> with its invariant comment). This collapsed a
+   14-call test-fix meltdown into a tight <code>apply → verify</code> — the single biggest turn win.</li>
+<li><strong>A "trust this" signal.</strong> <code>locate</code> now prints <code>&gt;&gt; STRONG MATCH</code> when it's confident. Opus
+   <em>acts</em> on it immediately; Sonnet is more stubborn (see lessons).</li>
+</ol>
+<h3 id="what-did-not-work-and-why">What did NOT work (and why)</h3>
+<ul>
+<li><strong>Mechanical caps just displace work.</strong> We added budgets on <code>locate</code>, then <code>read</code>, then a
+  shared <code>locate+trace+impact</code> budget. Each time, the model re-routed around the cap
+  (<code>locate → impact → trace → read</code>) and hit the <em>same</em> total. <strong>Discovery is a ~20-call
+  behavioral floor</strong> — the model discharges a fixed "orientation quota" regardless. We reverted
+  the shared discovery budget.</li>
+<li><strong>Lesson:</strong> invest in <strong>displacement-proof</strong> levers (smaller payloads, richer verdicts), not
+  in caps that just move the same calls to a different tool.</li>
+</ul>
+<hr />
+<h2 id="5-why-cost-cached-is-the-real-number">5. Why "cost (cached)" is the real number</h2>
+<p>Every run used Anthropic <strong>prompt caching</strong>, and the API's own usage counters prove it — the vast
+majority of "input" tokens are cheap cache-<em>reads</em>, not full-price fresh tokens:</p>
+<table>
+<thead>
+<tr>
+<th>run</th>
+<th style="text-align: right;">total input</th>
+<th style="text-align: right;">cache <strong>read</strong></th>
+<th style="text-align: right;">cache <strong>write</strong></th>
+<th style="text-align: right;">truly fresh</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sonnet + KG</td>
+<td style="text-align: right;">724,437</td>
+<td style="text-align: right;">635,118 (<strong>88%</strong>)</td>
+<td style="text-align: right;">89,281</td>
+<td style="text-align: right;">38</td>
+</tr>
+<tr>
+<td>Opus + KG</td>
+<td style="text-align: right;">467,068</td>
+<td style="text-align: right;">386,883 (<strong>83%</strong>)</td>
+<td style="text-align: right;">80,159</td>
+<td style="text-align: right;">26</td>
+</tr>
+<tr>
+<td>Sonnet · no KG</td>
+<td style="text-align: right;">7,994,269</td>
+<td style="text-align: right;">7,670,217 (<strong>96%</strong>)</td>
+<td style="text-align: right;">323,882</td>
+<td style="text-align: right;">170</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>cost cached</code></strong> = the real bill (cache-reads billed at ~10% of input price). <strong>Use this.</strong></li>
+<li><strong><code>cost naive</code></strong> = hypothetical "if caching were off" (all input at full price). Same run, worst case.</li>
+<li>You pay <strong>one or the other</strong>, never the sum.</li>
+</ul>
+<p><strong>Key economic insight:</strong> because ~90% of input is cheap cache-reads, the dollar drivers are
+<strong>output tokens + cache-writes</strong>, both of which scale with <strong>number of turns</strong>, not payload size.
+<strong>So cost is set by turn count.</strong> That's why the whole optimization effort targeted turns.</p>
+<p><em>(Note: at the non-KG baseline, Opus and Sonnet cost about the same — Opus's token-efficiency
+cancels its 5× price. KG breaks the tie: once tokens shrink, the per-token price gap dominates and
+the cheaper model, Sonnet, wins decisively.)</em></p>
+<hr />
+<h2 id="6-model-behavior-notes-useful-for-picking-one">6. Model behavior notes (useful for picking one)</h2>
+<ul>
+<li><strong>Opus is the better <em>agent</em></strong> — fewest calls (18) and tokens (0.49M) in every condition; it
+  reads the <code>STRONG MATCH</code> signal and edits immediately.</li>
+<li><strong>Sonnet flails more without structure</strong> — worst baseline (84 calls); it ignored <code>STRONG
+  MATCH</code> and over-explored. <strong>But</strong> the KG closes that gap enough that its 5× lower price wins on cost.</li>
+<li><strong>Correct scope can be <em>harder</em>.</strong> The tight, correct edit (only <code>totalGMV</code>) triggered a
+  parameterized-invariant test that the <em>sloppy</em> all-metrics edit sidestepped. Good scoping isn't
+  always the easy path — the tooling has to help with the test fallout, which is what verify
+  hydration does.</li>
+</ul>
+<hr />
+<h2 id="7-recommendation-what-shipped">7. Recommendation &amp; what shipped</h2>
+<ul>
+<li><strong>Default to <code>kg-sonnet</code></strong> for scoped changes; reach for <code>kg-opus</code> when you want the fewest
+  round-trips and don't mind paying. <strong>Pin the model explicitly</strong> — see §8; <code>kg-sonnet</code> ships on
+  <code>claude-5-sonnet</code> (a silent drift to <code>claude-4-6-sonnet</code> measurably regressed correctness &amp; cost).</li>
+<li><strong>Ship KG-only, never KG-preferred.</strong></li>
+<li>The reusable MCP server + edit-loop CLIs live in this repo (<code>codegraph-ext/</code>), driven by two
+  KG-only agents (a cost-optimal "sonnet" cell and a fewest-turns "opus" cell). See the
+  <a href="../README.md">README</a> to point them at any repo.</li>
+</ul>
+<h3 id="caveats-state-them-if-asked">Caveats (state them if asked)</h3>
+<ul>
+<li><strong>Most cells are n = 1</strong>, though the Sonnet KG-only cell is now <strong>n = 3 per model</strong> (§8). Sonnet
+  has real run-to-run variance (we saw $0.71–$3.20 across KG runs). The 4× cross-model cost gap
+  dwarfs that band, so the <em>ranking</em> is robust; other cells still want a 3–5× batch to publish tight
+  mean ± spread.</li>
+<li>The KG doesn't model <strong>JSX/prop edges</strong> — <code>trace</code> from a widget can dead-end where a value flows
+  through a component prop; the workaround is to trace from the shared component's config symbol.</li>
+</ul>
+<hr />
+<h2 id="8-model-sensitivity-replication-n3-fixed-kg-scaffold">8. Model-sensitivity replication (n=3, fixed KG scaffold)</h2>
+<p>Holding the KG scaffold <strong>completely fixed</strong> (same KG-only agent <code>ab-sonnet-kgonly-tight</code>, same
+clone, same task, system prompt <strong>SHA-256-identical</strong> including the sandbox lock), we varied only
+the model and ran each n=3. Correctness was adjudicated by the harness (independent diff + scope
+count + fresh un-memoized test run) — <strong>never</strong> the agent's self-report.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Correct</th>
+<th>Mean turns</th>
+<th>Mean tokens</th>
+<th>Mean cost (cached)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude-5-sonnet</code></td>
+<td><strong>3/3 (100%)</strong></td>
+<td><strong>22</strong></td>
+<td><strong>770K</strong></td>
+<td><strong>$0.84</strong></td>
+</tr>
+<tr>
+<td><code>claude-4-6-sonnet</code></td>
+<td>2/3 (67%)</td>
+<td>29 (correct runs)</td>
+<td>971K</td>
+<td>$1.06 (correct runs)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Sonnet 5 wins on every axis</strong> — 100% vs 67% correct, ~32% fewer turns, ~26% cheaper per success.
+The KG index/augmentation/prompt were provably unchanged (SHA match); the <strong>model swap alone</strong>
+explained the regression that kicked off this whole investigation (a shipped agent's model pin had
+silently drifted to 4.6).</p>
+<h3 id="failure-taxonomy-the-dangerous-part">Failure taxonomy (the dangerous part)</h3>
+<p>Both 4.6 failures would pass a naive “did it say it passed?” gate:
+- <strong>Green-but-wrong (scope over-reach):</strong> one 4.6 run recolored <strong>all 4 metrics</strong> yet tests were
+  <strong>149/149 PASS</strong> — no test asserts the <em>other</em> metrics keep their colors (coverage gap). <code>verify</code>
+  answers “did I break covered behavior?”, not “did I change <em>exactly</em> what was asked?”
+- <strong>Fabricated FINAL ANSWER:</strong> an earlier 4.6 attempt listed color edits to files its tool trace
+  never touched and claimed a <code>verify</code> PASS it never called; the diff + real test run contradicted it.</p>
+<p>Neither mode appeared in any Sonnet 5 run. <strong>Consequence: the success signal must come from the
+harness, not the subject</strong> — and pair <code>verify</code> with a scope check for value/scoped edits.</p>
+<h2 id="9-when-does-kg-help-ambiguity-vs-blast-radius-n5">9. When does KG help? Ambiguity vs. blast radius (n=5)</h2>
+<p>Every section above fixed the <em>task</em> and varied the <em>tooling/model</em>. This one fixes the model
+(<code>claude-5-sonnet</code> on <strong>both</strong> arms — a clean tooling-only contrast) and varies the <em>task shape</em>
+along two axes to ask <strong>which kinds of change KG actually helps with</strong>. Three tiers, KG-only
+(<code>ab-sonnet-kgonly-tight</code>) vs naive (grep/read/shell, <code>ab-main-sonnet</code>), <strong>n=5 per cell</strong>, head-less,
+<strong>15-min hard kill</strong> (a kill = a "failed to converge" data point), oracle-adjudicated.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Change</th>
+<th>Blast radius</th>
+<th>Scope ambiguity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>T1 trivial</strong></td>
+<td>one shared fill-opacity constant 0.4→0.55</td>
+<td>1 file</td>
+<td>none</td>
+</tr>
+<tr>
+<td><strong>T2 ambiguous</strong></td>
+<td>recolor the "primary graph series" (GMV) + stroke width</td>
+<td>~2 files</td>
+<td><strong>high</strong> (which metric? shared stroke vs scoped color? legacy palette?)</td>
+</tr>
+<tr>
+<td><strong>T3 wide-mechanical</strong></td>
+<td>tooltip bg <code>#002242</code>→<code>#013A63</code> everywhere except redesign branch</td>
+<td>4 files</td>
+<td>low (uniform find-and-replace)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Correctness (n=5, oracle-adjudicated):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>KG</th>
+<th>Naive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1 trivial</td>
+<td>3/3</td>
+<td>2/2</td>
+</tr>
+<tr>
+<td>T2 ambiguous</td>
+<td><strong>4/5</strong> (1 green-but-wrong)</td>
+<td><strong>0/5</strong> (5/5 timed out)</td>
+</tr>
+<tr>
+<td>T3 wide-mechanical</td>
+<td>5/5</td>
+<td>5/5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Time to correct change (s):</strong> T1 KG med 48 vs naive 96 · T2 KG med 384 vs naive <strong>≥900 (censored,
+killed)</strong> · T3 KG med 113 vs naive 267.</p>
+<p><strong>In the paper's own currency (turns / tokens / $), recovered from recorded sessions</strong> — turns drive
+cost (§5). Killed runs are never flushed to disk, so naive T2 has no turn data (converged tiers only):</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Arm</th>
+<th>Turns (mean / raw)</th>
+<th>Tokens (mean)</th>
+<th>$ (mean)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>KG</td>
+<td>4.7 (4,5,5)</td>
+<td>67K</td>
+<td>$0.076</td>
+</tr>
+<tr>
+<td>T1</td>
+<td>naive</td>
+<td>16.5 (13,20)</td>
+<td>348K</td>
+<td>$0.249</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>KG</td>
+<td>18.4 (13,17,19,21,22)</td>
+<td>915K</td>
+<td>$0.922</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>naive</td>
+<td>— all 5 killed, no flush —</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>T3</td>
+<td>KG</td>
+<td><strong>7.0 (7,7,7,7,7)</strong></td>
+<td>171K</td>
+<td><strong>$0.231</strong></td>
+</tr>
+<tr>
+<td>T3</td>
+<td>naive</td>
+<td><strong>40.0 (18,37,43,44,58)</strong></td>
+<td>1.42M</td>
+<td><strong>$0.796</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Significance:</strong>
+- <strong>T2 correctness — Fisher's exact 2-sided: p = 0.0476 (significant).</strong> <code>[[4,1],[0,5]]</code>. Landed on
+  the razor's edge: with KG at 4/5, naive had to be a clean 0/5 to clear α=0.05 — and it was.
+- <strong>T3 efficiency — Mann-Whitney (exact, 2-sided): turns U=0 p = 0.0079; time U=1 p = 0.0159.</strong> Turns
+  is the cleaner signal <em>and</em> the cost driver: KG spent <strong>exactly 7 turns on all 5 runs</strong> (zero
+  variance) vs naive 18–58 — perfect separation. In $: <strong>$0.23 vs $0.80 = 3.4×</strong>, at identical 5/5
+  correctness. (Wall-clock 2.4× is noisier — one naive run hit 116s, overlapping KG's range.)
+- <strong>T1 — genuine null, uncertifiable at n=3/2</strong> (min achievable p = 0.20 regardless of separation).</p>
+<p><strong>The mechanism (revises the blast-radius intuition):</strong> KG's payoff tracks <strong>scope ambiguity, not
+fan-out.</strong> T3 has the <em>widest</em> fan-out yet naive nails it 5/5 — just <strong>3.4× costlier ($0.80 vs $0.23)</strong>
+and ~5.7× the turns (40 vs 7); notably KG spent <strong>exactly 7 turns every run</strong> (graph makes discovery
+deterministic) while naive ranged 18–58 (a dice roll). T2 has <em>narrow</em> fan-out but real interpretive
+choice, and it's the only tier where naive fails outright — by <strong>never converging</strong> (unstructured
+grep/read exploration; one run hit the framework's context-compaction spiral before the kill). On
+mechanical work KG buys cost+consistency; on ambiguous work it's the difference between finishing and
+timing out; on trivial work it's neither.</p>
+<p><strong>Caveats:</strong> the T2 win is <em>non-convergence</em>, not wrong-answer (the 15-min budget is part of the
+claim); KG still threw 1/5 green-but-wrong (reduces ≠ eliminates the ambiguity failure mode); an early
+T3 run false-failed on missing compiled Lingui locales (environment gap) — recompiled, discarded,
+re-ran clean, excluded from figures; still one repo/one model. The harness and raw <code>results.jsonl</code>
+are kept privately; p-values computed by exact enumeration.</p>
+<p><strong>Extended-budget follow-up (is naive slow, or stuck?):</strong> the most-attackable line above is the 15-min
+wall. We re-ran naive T2 on a clean clone at <strong>3× the budget — a 45-min hard kill</strong>, same task/oracle/
+model. Result: <strong>0/2 converged.</strong> r6 ran the full 45 min (2 context-compaction spirals, summarizing 42
+then 69 older messages) with 0 applied change; r8 ran the full 45 min, reached the correct shared fn
+<code>createSingleSeries</code> (~min 38) and fired one edit that silently no-op'd (<code>git diff</code> empty). (A third
+run was excluded — cut short by an org-wide 429 token-quota event, not the kill.) <strong>Verdict: naive is
+stuck, not slow</strong> — extending the headline from "0/5 in 15 min" to "0/2 with 3× the runway." The failure
+is structural discovery (rediscover→lose→rediscover across compaction boundaries), not throughput; every
+KG T2 run converged in a median 384s, ~1/7 of the budget naive exhausted without a diff. A side-by-side
+replay of one KG vs one naive run (built from the real transcripts) was recorded as a side-by-side
+screencast (kept with the private harness).</p>
+<hr />
+<p><em>Generated from recorded agent sessions. The experiment harness and raw session logs are kept
+privately; the numbers above are reproduced verbatim from those recordings.</em></p>
+<hr />
+<h2 id="figures">Figures</h2>
+<p><img alt="Cost per task" src="charts/01-cost-per-task.png" /></p>
+<p><img alt="Naive baseline cost" src="charts/02-naive-baseline-cost.png" /></p>
+<p><img alt="Tuning series — turns" src="charts/03-tuning-series-turns.png" /></p>
+<p><img alt="Tool-calls per task" src="charts/04-toolcalls-per-task.png" /></p>
+<p><img alt="Cache composition" src="charts/05-cache-composition.png" /></p>
+<p><img alt="Median time (ambiguity vs blast radius)" src="charts/06-exp8-median-time.png" /></p>
+<p><img alt="Mean turns (ambiguity vs blast radius)" src="charts/07-exp8-mean-turns.png" /></p>
+</body>
+</html>

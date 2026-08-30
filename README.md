@@ -92,7 +92,8 @@ coding agent this graph — **instead** of letting it grep/read files — turned
 (Sonnet) from the *most expensive, worst-behaving* option into the **cost-optimal** one: ~5×
 cheaper than non-KG Sonnet and ~4× cheaper than KG Opus, at matching correctness. The full
 write-up (method, results, significance tests, and the tuning log) is in
-[`docs/experiment.md`](docs/experiment.md).
+[`docs/experiment.md`](docs/experiment.md) — also rendered as
+[`docs/report.html`](docs/report.html) / [`docs/report.pdf`](docs/report.pdf).
 
 Reach for [`token-bench.cjs`](codegraph-ext/token-bench.cjs) to quantify the win on **your** repo.
 It's zero-config: it auto-discovers the highest-fan-in questions (the most-mocked module, the
