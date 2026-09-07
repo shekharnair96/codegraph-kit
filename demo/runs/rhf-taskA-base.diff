@@ -1,0 +1,40 @@
+diff --git a/src/__tests__/utils/has.test.ts b/src/__tests__/utils/has.test.ts
+index 3cfb5173..f2362bf0 100644
+--- a/src/__tests__/utils/has.test.ts
++++ b/src/__tests__/utils/has.test.ts
+@@ -45,6 +45,9 @@ describe('has', () => {
+     expect(has({}, 'constructor')).toBeFalsy();
+     expect(has({}, '__proto__')).toBeFalsy();
+     expect(has({ a: {} }, 'a.__proto__.b')).toBeFalsy();
++    expect(has({}, 'a.constructor.b')).toBeFalsy();
++    expect(has({}, 'a.prototype.b')).toBeFalsy();
++    expect(has({ a: {} }, 'a.__proto__')).toBeFalsy();
+   });
+ 
+   it('should return false for an empty path or a non-traversable object', () => {
+diff --git a/src/utils/has.ts b/src/utils/has.ts
+index 96f569d0..d8c56b56 100644
+--- a/src/utils/has.ts
++++ b/src/utils/has.ts
+@@ -1,3 +1,4 @@
++import { PROTOTYPE_KEYWORDS } from '../constants';
+ import isKey from './isKey';
+ import { isObjectType } from './isObject';
+ import stringToPath from './stringToPath';
+@@ -12,9 +13,15 @@ export default <T>(object: T, path?: string | null): boolean => {
+     return false;
+   }
+ 
++  const paths = isKey(path) ? [path] : stringToPath(path);
++
++  if (paths.some((key) => PROTOTYPE_KEYWORDS.includes(key))) {
++    return false;
++  }
++
+   let result: unknown = object;
+ 
+-  for (const key of isKey(path) ? [path] : stringToPath(path)) {
++  for (const key of paths) {
+     if (!hasOwn(result, key)) {
+       // `get` also resolves a path held as a single literal key, eg `{ 'a.b': 1 }`
+       return hasOwn(object, path);

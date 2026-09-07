@@ -1,4 +1,9 @@
-# Demo: KG-only agent vs. plain agent on react-hot-toast
+# Demo: KG-only agent vs. plain agent
+
+Two repos, four scoped tasks, eight headless Claude Code runs — every run on a clean tree, every
+suite verified green afterwards.
+
+## Demo 1: react-hot-toast (small repo — 28 files, 13 tests)
 
 Four headless Claude Code runs against [react-hot-toast](https://github.com/timolins/react-hot-toast)
 (commit `f339d71`, 28 files, 13-test jest suite), driven by `claude -p` on a clean tree each time.
@@ -14,7 +19,7 @@ tests' promise delays.
 **Task B** (`taskB.md`) — rename with a substring trap: `ToastBar`→`ToastCard` (+ props interface),
 while leaving the styled element `ToastBarBase` alone.
 
-## Results
+### Results
 
 | run | suite after | turns | tool calls | cost (USD) | wall |
 |---|---|---|---|---|---|
@@ -40,17 +45,73 @@ Notes, honestly reported:
   KG agent can't hit that failure mode, because `codegraph_test_one`/`codegraph_verify` are inside
   its own toolset. Worth knowing when you configure a plain agent's permissions.
 
+## Demo 2: react-hook-form (mid-size repo — ~6,000 graph nodes, 1,302 tests)
+
+Same protocol against [react-hook-form](https://github.com/react-hook-form/react-hook-form)
+(v7.87.0, commit `b564062c`; 120 jest suites, 1302 tests, all green at baseline). The index:
+6,086 nodes / 20,166 edges / 4,284 symbol bodies.
+
+**Task A** (`rhf-taskA.md`) — small feature: add the `PROTOTYPE_KEYWORDS` prototype-pollution guard
+(already present in `get`/`set`/`unset`) to `src/utils/has.ts`, plus new test assertions — without
+touching the three sibling utils that already have it.
+**Task B** (`rhf-taskB.md`) — rename with a substring trap: function `getFieldValue` →
+`readFieldValue` across definition, import, call sites, and tests, while leaving `getFieldValueAs`
+— which lives in the **same file** and contains the old name as a substring — untouched, and
+keeping all file names as they are.
+
+### Results
+
+| run | suite after | turns | tool calls | cost (USD) | input tokens (cache reads) | wall |
+|---|---|---|---|---|---|---|
+| A kg-sonnet | PASS 1302/1302 | **9** | 8 | **0.12** | **65k** | 36s |
+| A baseline  | PASS 1302/1302 | 11 | 10 | 0.27 | 217k | 28s |
+| B kg-sonnet | PASS 1302/1302 | 18 | 17 | **0.13** | **64k** | 36s |
+| B baseline  | PASS 1302/1302 | 18 | 17 | 0.22 | 354k | 46s |
+
+All four produced the correct diff: the guard landed only in `has.ts` + its test, the rename hit
+all 12 sites, and `getFieldValueAs` survived intact in every run (`runs/rhf-*.diff`).
+
+Notes, honestly reported:
+
+- On the bigger repo the KG agent's context stays small: **~65k input tokens per task vs 217–354k
+  for the baseline** (3–5x), because `codegraph_plan`/`impact`/`read` return exactly the relevant
+  sites instead of whole files and grep sweeps. That gap is what grows with repo size — cost
+  followed it (roughly half the baseline's on both tasks).
+- The kg agent effectively **cannot use the plain `Edit` tool**: Claude Code requires a file to be
+  read before editing, and the kg toolset has no `Read` (that's the starvation constraint). In the
+  B run it burned 11 failed `Edit` attempts learning this, then recovered with a **single batched
+  `codegraph_apply_edit_at_site` call that landed the entire 12-site rename at once** and verified
+  green. The failed attempts are why its turn count matches the baseline's; the token/cost gap
+  stayed 2x anyway.
+- The baseline B run tried a `perl -pi -e` in-place rename first (blocked — not allowlisted), which
+  would have corrupted `getFieldValueAs`; its per-occurrence `Edit` fallback got the trap right.
+- Building this demo also caught a real kit bug: the body-index's string-literal regex went
+  catastrophically exponential on react-hook-form's large JSX test files (20+ CPU minutes,
+  confirmed via stack sampling). Fixed to linear per-quote patterns — 0.48s on the same corpus.
+
 ## Reproduce
 
 ```bash
+# demo 1
 git clone https://github.com/timolins/react-hot-toast && cd react-hot-toast
-npx pnpm install --frozen-lockfile
+npx pnpm@9 install --frozen-lockfile
+
+# demo 2 (needs pnpm 10 — its pnpm-workspace.yaml uses v10 fields)
+git clone https://github.com/react-hook-form/react-hook-form && cd react-hook-form
+npx pnpm@10 install --frozen-lockfile
+
+# either repo, from its root:
 /path/to/codegraph-kit/install.sh "$PWD" --host claude
 claude -p "$(cat /path/to/demo/taskA.md)" --agent kg-sonnet \
   --mcp-config .mcp.json --strict-mcp-config \
   --allowedTools mcp__codegraph Edit Write MultiEdit \
   --permission-mode acceptEdits --output-format stream-json --verbose
 ```
+
+The baseline runs use the same command with `--model sonnet` instead of `--agent kg-sonnet`, and
+`--allowedTools Edit Write MultiEdit Read Grep Glob "Bash(npx jest*)" ...` — the full runner
+(reset, capture, re-verify, summarize) is a ~30-line bash script; see the per-run
+`runs/*.summary.json` for the exact tool breakdown each agent produced.
 
 Costs are one sample per cell, not a benchmark; the private experiment behind the kit ran the same
 comparison at n=40 per tier.

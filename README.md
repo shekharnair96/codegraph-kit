@@ -24,12 +24,15 @@ Full write-up: [`docs/experiment.md`](docs/experiment.md) (also rendered as
 [`docs/report.html`](docs/report.html)), the slide deck [`docs/deck.html`](docs/deck.html), charts in
 [`docs/figures/`](docs/figures/), and the design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-Those are relative A/B claims from the private experiment behind this kit. For a small
-reproducible **public** demo, see [`demo/README.md`](demo/README.md): four headless runs on
-[react-hot-toast](https://github.com/timolins/react-hot-toast), two tasks (a multi-site default
-change, and a rename with a substring trap), kg-sonnet vs. a plain agent, with prompts, diffs and
-per-run summaries. Honestly reported: on the rename the KG agent used ~40% fewer turns and cost;
-on the value change the baseline was slightly cheaper.
+Those are relative A/B claims from the private experiment behind this kit. For reproducible
+**public** demos, see [`demo/README.md`](demo/README.md): eight headless runs across
+[react-hot-toast](https://github.com/timolins/react-hot-toast) (28 files, 13 tests) and
+[react-hook-form](https://github.com/react-hook-form/react-hook-form) (~6,000 graph nodes, 1,302
+tests), kg-sonnet vs. a plain agent on four tasks, with prompts, diffs and per-run summaries.
+Honestly reported: on renames the KG agent used ~40% fewer turns and cost; on a small value change
+in the tiny repo the baseline was slightly cheaper. The size effect is the interesting one — on
+react-hook-form the KG agent ran on **~65k input tokens per task vs the baseline's 217–354k**, at
+roughly half the cost, with every suite green.
 
 ## The tools
 

@@ -1,0 +1,109 @@
+diff --git a/src/__tests__/logic/getFieldValue.test.ts b/src/__tests__/logic/getFieldValue.test.ts
+index 5442a09f..18960250 100644
+--- a/src/__tests__/logic/getFieldValue.test.ts
++++ b/src/__tests__/logic/getFieldValue.test.ts
+@@ -1,4 +1,4 @@
+-import getFieldValue from '../../logic/getFieldValue';
++import readFieldValue from '../../logic/getFieldValue';
+ import type { Field } from '../../types';
+ 
+ jest.mock('../../logic/getRadioValue', () => ({
+@@ -15,10 +15,10 @@ jest.mock('../../logic/getCheckboxValue', () => ({
+   }),
+ }));
+ 
+-describe('getFieldValue', () => {
++describe('readFieldValue', () => {
+   it('should return correct value when type is radio', () => {
+     expect(
+-      getFieldValue({
++      readFieldValue({
+         name: 'test',
+         ref: {
+           type: 'radio',
+@@ -30,7 +30,7 @@ describe('getFieldValue', () => {
+ 
+   it('should return the correct value when type is checkbox', () => {
+     expect(
+-      getFieldValue({
++      readFieldValue({
+         name: 'test',
+         ref: {
+           name: 'test',
+@@ -42,7 +42,7 @@ describe('getFieldValue', () => {
+ 
+   it('should return it value for other types', () => {
+     expect(
+-      getFieldValue({
++      readFieldValue({
+         name: 'test',
+         ref: {
+           type: 'text',
+@@ -54,12 +54,12 @@ describe('getFieldValue', () => {
+   });
+ 
+   it('should return empty string when radio input value is not found', () => {
+-    expect(getFieldValue({ ref: {} } as Field['_f'])).toEqual(undefined);
++    expect(readFieldValue({ ref: {} } as Field['_f'])).toEqual(undefined);
+   });
+ 
+   it('should return files for input type file', () => {
+     expect(
+-      getFieldValue({
++      readFieldValue({
+         name: 'test',
+         ref: {
+           type: 'file',
+@@ -72,7 +72,7 @@ describe('getFieldValue', () => {
+ 
+   it('should return undefined when input is not found', () => {
+     expect(
+-      getFieldValue({
++      readFieldValue({
+         name: 'test',
+         ref: {
+           name: 'file',
+diff --git a/src/logic/createFormControl.ts b/src/logic/createFormControl.ts
+index 3f2c2cf5..54c121e8 100644
+--- a/src/logic/createFormControl.ts
++++ b/src/logic/createFormControl.ts
+@@ -89,7 +89,7 @@ import generateWatchOutput from './generateWatchOutput';
+ import getDirtyFields from './getDirtyFields';
+ import getEventValue from './getEventValue';
+ import getFieldArrayItemNames from './getFieldArrayItemNames';
+-import getFieldValue from './getFieldValue';
++import readFieldValue from './getFieldValue';
+ import getFieldValueAs from './getFieldValueAs';
+ import getResolverOptions from './getResolverOptions';
+ import getRuleValue from './getRuleValue';
+@@ -467,7 +467,7 @@ export function createFormControl<
+         ? set(
+             _formValues,
+             name,
+-            shouldSkipSetValueAs ? defaultValue : getFieldValue(field._f),
++            shouldSkipSetValueAs ? defaultValue : readFieldValue(field._f),
+           )
+         : setFieldValue(name, defaultValue);
+ 
+@@ -1132,7 +1132,7 @@ export function createFormControl<
+       let error;
+       let isValid;
+       const fieldValue = target.type
+-        ? getFieldValue(field._f)
++        ? readFieldValue(field._f)
+         : getEventValue(event);
+       const isBlurEvent =
+         event.type === EVENTS.BLUR || event.type === EVENTS.FOCUS_OUT;
+diff --git a/src/logic/getFieldValue.ts b/src/logic/getFieldValue.ts
+index 4e1456b3..493f2825 100644
+--- a/src/logic/getFieldValue.ts
++++ b/src/logic/getFieldValue.ts
+@@ -8,7 +8,7 @@ import getCheckboxValue from './getCheckboxValue';
+ import getFieldValueAs from './getFieldValueAs';
+ import getRadioValue from './getRadioValue';
+ 
+-export default function getFieldValue(_f: Field['_f']) {
++export default function readFieldValue(_f: Field['_f']) {
+   const ref = _f.ref;
+ 
+   if (isFileInput(ref)) {

@@ -1,0 +1,52 @@
+{
+ "task": "B",
+ "mode": "base",
+ "exit": 0,
+ "wall_s": 46,
+ "jest_exit": 0,
+ "num_turns": 18,
+ "cost_usd": 0.2223297,
+ "usage": {
+  "input_tokens": 26,
+  "cache_creation_input_tokens": 10785,
+  "cache_read_input_tokens": 353719,
+  "output_tokens": 3349,
+  "output_tokens_details": {
+   "thinking_tokens": 11
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10785,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "not_available",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 114,
+    "cache_read_input_tokens": 31360,
+    "cache_creation_input_tokens": 436,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 436
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "tool_calls": 17,
+ "tools": {
+  "Grep": 4,
+  "Bash": 5,
+  "Read": 3,
+  "Edit": 4,
+  "Write": 1
+ },
+ "is_error": false,
+ "subtype": "success"
+}
