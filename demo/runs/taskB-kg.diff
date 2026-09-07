@@ -1,0 +1,57 @@
+diff --git a/src/components/toast-bar.tsx b/src/components/toast-bar.tsx
+index de520dc..7cef5f3 100644
+--- a/src/components/toast-bar.tsx
++++ b/src/components/toast-bar.tsx
+@@ -44,7 +44,7 @@ const Message = styled('div')`
+   white-space: pre-line;
+ `;
+ 
+-interface ToastBarProps {
++interface ToastCardProps {
+   toast: Toast;
+   position?: ToastPosition;
+   style?: React.CSSProperties;
+@@ -72,7 +72,7 @@ const getAnimationStyle = (
+   };
+ };
+ 
+-export const ToastBar: React.FC<ToastBarProps> = React.memo(
++export const ToastCard: React.FC<ToastCardProps> = React.memo(
+   ({ toast, position, style, children }) => {
+     const animationStyle: React.CSSProperties = toast.height
+       ? getAnimationStyle(
+diff --git a/src/components/toaster.tsx b/src/components/toaster.tsx
+index 1b36ddb..bf42012 100644
+--- a/src/components/toaster.tsx
++++ b/src/components/toaster.tsx
+@@ -8,7 +8,7 @@ import {
+ } from '../core/types';
+ import { useToaster } from '../core/use-toaster';
+ import { prefersReducedMotion } from '../core/utils';
+-import { ToastBar } from './toast-bar';
++import { ToastCard } from './toast-bar';
+ 
+ setup(React.createElement);
+ 
+@@ -133,7 +133,7 @@ export const Toaster: React.FC<ToasterProps> = ({
+             ) : children ? (
+               children(t)
+             ) : (
+-              <ToastBar toast={t} position={toastPosition} />
++              <ToastCard toast={t} position={toastPosition} />
+             )}
+           </ToastWrapper>
+         );
+diff --git a/src/index.ts b/src/index.ts
+index 1968353..fd86288 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -2,7 +2,7 @@ import { toast } from './core/toast';
+ 
+ export * from './headless';
+ 
+-export { ToastBar } from './components/toast-bar';
++export { ToastCard } from './components/toast-bar';
+ export { ToastIcon } from './components/toast-icon';
+ export { Toaster } from './components/toaster';
+ export { CheckmarkIcon } from './components/checkmark';

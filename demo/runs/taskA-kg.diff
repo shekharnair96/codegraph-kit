@@ -1,0 +1,48 @@
+diff --git a/src/core/store.ts b/src/core/store.ts
+index af9df89..c5680ca 100644
+--- a/src/core/store.ts
++++ b/src/core/store.ts
+@@ -1,7 +1,7 @@
+ import { useEffect, useState, useRef } from 'react';
+ import { DefaultToastOptions, Toast, ToastType } from './types';
+ 
+-export const TOAST_EXPIRE_DISMISS_DELAY = 1000;
++export const TOAST_EXPIRE_DISMISS_DELAY = 1500;
+ export const TOAST_LIMIT = 20;
+ export const DEFAULT_TOASTER_ID = 'default';
+ 
+@@ -177,7 +177,7 @@ export const defaultTimeouts: {
+ } = {
+   blank: 4000,
+   error: 4000,
+-  success: 2000,
++  success: 3000,
+   loading: Infinity,
+   custom: 4000,
+ };
+diff --git a/src/core/use-toaster.ts b/src/core/use-toaster.ts
+index c97a0f1..957da2c 100644
+--- a/src/core/use-toaster.ts
++++ b/src/core/use-toaster.ts
+@@ -3,7 +3,7 @@ import { createDispatch, ActionType, useStore, dispatch } from './store';
+ import { toast } from './toast';
+ import { DefaultToastOptions, Toast, ToastPosition } from './types';
+ 
+-export const REMOVE_DELAY = 1000;
++export const REMOVE_DELAY = 1500;
+ 
+ export const useToaster = (
+   toastOptions?: DefaultToastOptions,
+diff --git a/test/toast.test.tsx b/test/toast.test.tsx
+index dea5c8e..241d4cc 100644
+--- a/test/toast.test.tsx
++++ b/test/toast.test.tsx
+@@ -315,7 +315,7 @@ test('pause toast', async () => {
+   fireEvent.mouseLeave(toastElement);
+ 
+   waitTime(1000);
+-  waitTime(1000);
++  waitTime(1500);
+ 
+   expect(toastElement).not.toBeInTheDocument();
+ });

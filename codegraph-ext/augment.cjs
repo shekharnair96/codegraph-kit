@@ -132,7 +132,15 @@ const project = new Project({
   skipFileDependencyResolution: true,
   compilerOptions: { allowJs: true, jsx: 2 },
 });
-project.addSourceFilesAtPaths([path.join(SRC, "**/*.ts"), path.join(SRC, "**/*.tsx"), "!" + path.join(SRC, "**/node_modules/**"), "!" + path.join(APP_ROOT, "codegraph-ext/**")]);
+// Scan exactly the files the indexer walked (respects .codegraph/config.json includes/excludes),
+// so tests living outside src/ (e.g. a top-level test/ dir) still produce covers/mocks edges.
+for (const r of query("SELECT path FROM files WHERE path LIKE '%.ts' OR path LIKE '%.tsx';")) {
+  try {
+    project.addSourceFileAtPath(path.join(APP_ROOT, r.path));
+  } catch (_) {
+    /* file vanished since indexing */
+  }
+}
 const isTest = p => /\.test\.tsx?$/.test(p);
 const isSkippable = p => /(__mocks__|__snapshots__)\//.test(p);
 
