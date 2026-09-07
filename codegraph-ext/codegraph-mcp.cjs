@@ -30,7 +30,11 @@ const crypto = require("crypto");
 // differs, so the next call is served fresh. Edits also clear the counters. Scope: read tools only.
 const DEDUP_READ = new Set(["codegraph_locate", "codegraph_plan", "codegraph_impact", "codegraph_read"]);
 const EDIT_TOOLS = new Set(["codegraph_apply", "codegraph_apply_literal", "codegraph_apply_edit_at_site"]);
-const memo = new Map(); // key -> { hash, count }
+// Discovery tools whose failures are GUIDANCE, not fatal. Some hosts (e.g. pydantic-ai based ones)
+// turn a hard tool error into a retry and crash the run at max_retries. A bad trace path or a
+// not-yet-indexed repo should TEACH the agent, never kill it — so these always return soft.
+const SOFT_TOOLS = new Set(["codegraph_locate", "codegraph_trace", "codegraph_plan", "codegraph_impact", "codegraph_read"]);
+let memo = new Map(); // key -> { hash, count }   (let, not const: swapped per-root by activateRoot)
 function memoKey(name, args) {
   const a = {};
   for (const k of Object.keys(args || {}).sort()) {
@@ -46,7 +50,7 @@ function memoKey(name, args) {
 // overlapping/adjacent slices. So track the line ranges we've already SERVED per file (padded by the
 // server's ctx window) and reject a read whose every range is already CONTAINED in what it saw.
 const CTX = 6; // read-context.cjs default padding
-const servedRanges = new Map(); // fileRel -> [[lo,hi], ...]
+let servedRanges = new Map(); // fileRel -> [[lo,hi], ...]  (let: swapped per-root by activateRoot)
 function parseReadTargets(targets) {
   return (Array.isArray(targets) ? targets : [targets]).filter(Boolean).map(t => {
     const s = String(t);
@@ -124,8 +128,56 @@ let singleStreak = 0;
 let deferCount = 0;
 let passed = false;
 let resetArmed = false; // set once edits are made; triggers a per-run reset when the tree goes clean again
-const plannedDefFiles = new Set(); // definition sites plan said are the source of truth to edit
-const editedFiles = new Set(); // files we've actually seen an edit tool touch
+let lastCallAt = 0; // Fix E: wall-clock of this root's previous call, for idle-gap task boundaries
+let plannedDefFiles = new Set(); // definition sites plan said are the source of truth to edit
+let editedFiles = new Set(); // files we've actually seen an edit tool touch
+let runRoot = null; // Fix D: root pinned on first resolution of a run, so treeClean/edits/auto-reset all
+                    // check the SAME tree (arg-less calls no longer drift to cwd/CODEGRAPH_ROOT mid-run).
+                    // NOTE: this is the root-RESOLUTION pin ("which tree is the current context"), which is
+                    // inherently global; it is deliberately NOT part of the per-root state below.
+
+// ---------- Fix E: PER-ROOT state + IDLE-GAP task boundaries ----------
+// Two bugs lived here, and they compounded:
+//  (1) the turn-cutter state above was module-GLOBAL, so interleaved tasks across DIFFERENT repos on
+//      one long-lived server cross-contaminated each other's budgets/latch.
+//  (2) worse, and the one that actually bit: the only automatic reset was `resetArmed && treeClean`,
+//      and `resetArmed` is set ONLY when an edit lands. DISCOVERY-ONLY runs (scouts, candidate
+//      generators — read/locate/plan, no edits) therefore never armed it, so callCount accumulated
+//      MONOTONICALLY across every task for the life of the process. A guardrail meant to stop a
+//      runaway loop had degraded into a session-lifetime countdown, and every later run in a session
+//      inherited an exhausted budget. Raising CG_CALL_BUDGET would only move that wall, not fix it.
+// Fix: keep state in a Map<root, state> (isolation), and treat an IDLE GAP as a task boundary. A
+// runaway loop calls back-to-back (sub-second), so an idle gap never occurs WITHIN a loop — the
+// guardrail keeps its teeth — but a genuinely new task minutes later starts from a clean budget.
+// Deliberately NOT resetting on bare treeClean: a discovery-only spiral never dirties the tree, so
+// that would defeat CALL_BUDGET for exactly the read-only loops it exists to stop.
+const TASK_IDLE_MS = parseInt(process.env.CG_TASK_IDLE_MS || "90000", 10);
+const STATES = new Map(); // resolvedRoot -> state snapshot
+let activeRoot = null;
+function freshState() {
+  return { callCount: 0, verifyRuns: 0, readRuns: 0, locateRuns: 0, bestCandidate: null,
+           singleStreak: 0, deferCount: 0, passed: false, resetArmed: false, lastCallAt: 0,
+           plannedDefFiles: new Set(), editedFiles: new Set(), memo: new Map(), servedRanges: new Map() };
+}
+// Save/restore the whole working set in ONE auditable place. This is preferred over sprinkling
+// `state.x` across ~40 call sites: a missed site there would silently leak across roots (the very bug
+// being fixed), whereas a field missing from THIS list is a single, reviewable omission.
+function snapshotState() {
+  return { callCount, verifyRuns, readRuns, locateRuns, bestCandidate, singleStreak, deferCount,
+           passed, resetArmed, lastCallAt, plannedDefFiles, editedFiles, memo, servedRanges };
+}
+function loadState(s) {
+  ({ callCount, verifyRuns, readRuns, locateRuns, bestCandidate, singleStreak, deferCount,
+     passed, resetArmed, lastCallAt, plannedDefFiles, editedFiles, memo, servedRanges } = s);
+}
+function activateRoot(root) {
+  if (activeRoot === root) return;
+  if (activeRoot) STATES.set(activeRoot, snapshotState()); // park the outgoing root's state
+  const next = STATES.get(root) || freshState();
+  STATES.set(root, next);
+  loadState(next);
+  activeRoot = root;
+}
 const pathRe = /([\w./-]+\.tsx?):\d+/g;
 function collectPlannedDefs(text) {
   const re = /-\s+(\S+):\d+\s+\(definition/g;
@@ -145,7 +197,10 @@ function collectEdited(args, text) {
 // a prior run finished + was restored -> reset all per-run state before serving the new run's calls.
 function treeClean(root) {
   try {
-    const out = spawnSync("git", ["status", "--porcelain", "--", "src"], {
+    // --untracked-files=no: only TRACKED modifications should keep the tree "dirty". Pre-existing
+    // untracked junk (stray mocks, generated json) must NOT wedge the PASS-latch open forever —
+    // that exact case blocked auto-reset in the field even after the real work was committed.
+    const out = spawnSync("git", ["status", "--porcelain", "--untracked-files=no", "--", "src"], {
       cwd: root,
       encoding: "utf8",
     });
@@ -159,10 +214,14 @@ function resetRunState() {
   passed = false;
   bestCandidate = null;
   resetArmed = false;
+  runRoot = null; // Fix D: re-pin the root on the next call of the new run
   plannedDefFiles.clear();
   editedFiles.clear();
   memo.clear();
   servedRanges.clear();
+  // Fix E: persist the cleared state for the active root so the next activateRoot() of a DIFFERENT
+  // root parks a reset snapshot, not the pre-reset one.
+  if (activeRoot) STATES.set(activeRoot, snapshotState());
 }
 
 // Capture the strongest candidate a locate surfaced, so the budget-nudge can NAME the answer the
@@ -218,10 +277,23 @@ if (LOCK_ROOT) {
 
 function rootFrom(args) {
   if (LOCK_ROOT) return LOCK_ROOT;
-  if (args && args.projectRoot) return args.projectRoot;
+  if (args && args.projectRoot) {
+    // Fix D: remember the FIRST explicit root so later ARG-LESS calls in the same run reuse it instead
+    // of drifting to cwd-autodetect or the install-time CODEGRAPH_ROOT (a DIFFERENT git tree — which
+    // silently broke treeClean/auto-reset in the field, wedging the PASS-latch across tasks).
+    if (!runRoot) runRoot = path.resolve(args.projectRoot);
+    return args.projectRoot;
+  }
+  if (runRoot) return runRoot; // reuse the run's established root rather than re-resolving per call
   const detected = autodetectRoot(process.cwd());
-  if (detected) return detected;
-  return process.env.CODEGRAPH_ROOT || DEFAULT_ROOT;
+  if (detected) { runRoot = detected; return detected; }
+  const fallback = process.env.CODEGRAPH_ROOT || DEFAULT_ROOT;
+  process.stderr.write(
+    `[codegraph] WARN: call had no projectRoot arg and cwd autodetect failed; falling back to ${fallback}. ` +
+    `treeClean/auto-reset may check the WRONG tree — pass projectRoot for consistency.\n`
+  );
+  runRoot = fallback;
+  return fallback;
 }
 function runScript(root, script, scriptArgs) {
   const scriptPath = path.join(root, "codegraph-ext", script);
@@ -235,6 +307,24 @@ function runScript(root, script, scriptArgs) {
   });
   const out = ((r.stdout || "") + (r.stderr || "")).trim();
   return { ok: (r.status ?? 1) === 0, text: out || "(no output)" };
+}
+
+// Fail-fast setup check: a repo is usable only if it has BOTH the helper scripts (codegraph-ext/)
+// AND a built graph DB (.codegraph/codegraph.db). Missing either is the #1 setup foot-gun — e.g. a
+// manual `codegraph index` (DB only) without install.sh (scripts). Return ONE actionable line
+// instead of a cryptic "read-context.cjs not found" surfacing from deep inside runScript.
+function preflight(root) {
+  const hasScripts = fs.existsSync(path.join(root, "codegraph-ext"));
+  const hasDb = fs.existsSync(path.join(root, ".codegraph", "codegraph.db"));
+  if (hasScripts && hasDb) return null;
+  const missing = [];
+  if (!hasScripts) missing.push("codegraph-ext/ (helper scripts)");
+  if (!hasDb) missing.push(".codegraph/codegraph.db (graph index)");
+  return (
+    `CODEGRAPH NOT SET UP at ${root} — missing ${missing.join(" and ")}. ` +
+    `Fix: run  install.sh ${root}  (idempotent — copies codegraph-ext/ and builds the index). ` +
+    `If you meant a DIFFERENT repo, pass the correct projectRoot.`
+  );
 }
 
 // ---------- tool registry ----------
@@ -268,16 +358,16 @@ const TOOLS = {
       "FORWARD reachability: 'what does this entry REACH?' — the downward counterpart to codegraph_impact " +
       "('who uses X'). Follows calls/references OUT from an entry up to N hops and (optionally) shows only " +
       "chains that reach a CONCEPT. Entry is a SYMBOL name (best — gives the exact chain, e.g. a config fn " +
-      "-> ... -> the shared color constant) or a file/PATH prefix like 'widgets/itemSales'. Use it instead " +
-      "of guessing widget-local constant names: ask 'does this widget reach the primary color?' and get the " +
+      "-> ... -> the shared color constant) or a file/PATH prefix like 'components/chart'. Use it instead " +
+      "of guessing feature-local constant names: ask 'does this feature reach the primary color?' and get the " +
       "wiring. Note: chains that cross a JSX/prop boundary aren't tracked — for those, trace from the shared " +
-      "component's config symbol, or locate the concept in src/widgets/common/.",
+      "component's config symbol, or locate the concept in the shared config module.",
     inputSchema: {
       type: "object",
       properties: {
         entry: {
           type: "string",
-          description: "A symbol name (preferred) OR a file/path prefix (e.g. 'widgets/itemSales').",
+          description: "A symbol name (preferred) OR a file/path prefix (e.g. 'components/chart').",
         },
         concept: {
           type: "string",
@@ -550,17 +640,52 @@ function handle(msg) {
     const tool = TOOLS[name];
     if (!tool) return replyErr(id, -32602, `unknown tool: ${name}`);
     try {
+      const _root = rootFrom(args);
+      // ---- Fix E: activate this root's OWN state, then apply the idle-gap task boundary ----
+      // Must run before every gate below, so budgets/latch are always read from the right root.
+      activateRoot(path.resolve(_root));
+      const _now = Date.now();
+      if (lastCallAt && _now - lastCallAt > TASK_IDLE_MS) {
+        // A quiet gap this long means the previous task ended (a runaway loop never pauses), so the
+        // budget starts fresh. This is what stops CALL_BUDGET degrading into a session countdown for
+        // discovery-only runs, which never arm the edit-based reset below.
+        process.stderr.write(`[codegraph] task boundary: ${Math.round((_now - lastCallAt) / 1000)}s idle on ${_root} \u2014 resetting run state\n`);
+        resetRunState();
+        runRoot = path.resolve(_root); // keep the pin we just resolved; only budgets/latch reset
+      }
+      lastCallAt = _now;
+      // ---- ORCHESTRATOR-ONLY reset (no agent-callable tool) ----
+      // The subagent must NOT be able to zero its own budgets/latch (it will do so to escape a
+      // READ/LOCATE budget and keep spiralling). So reset is out-of-band: the ORCHESTRATOR (which
+      // has shell access; the KG agents do not) drops a flag file at <root>/.codegraph/.cg-reset
+      // before re-invoking. We consume it on the next call — clearing state exactly once, at the
+      // start of the new run — then delete the flag. No process kill, no ClosedResourceError.
+      try {
+        const flag = path.join(_root, ".codegraph", ".cg-reset");
+        if (fs.existsSync(flag)) {
+          resetRunState();
+          fs.unlinkSync(flag);
+        }
+      } catch (_) { /* best-effort; never fail a call over the reset flag */ }
+      // ---- fail-fast setup check (soft): missing scripts/DB -> ONE actionable line, never a crash ----
+      const setupErr = preflight(_root);
+      if (setupErr) {
+        return reply(id, { content: [{ type: "text", text: setupErr }], isError: false });
+      }
       // ---- per-run state reset (server is long-lived across runs; don't leak the latch/budgets) ----
-      if (resetArmed && treeClean(rootFrom(args))) resetRunState();
+      if (resetArmed && treeClean(_root)) resetRunState();
       // ---- TURN-CUTTER gates (mechanical; the model can't opt out) ----
       // NOTE: callCount is incremented ONLY when a tool actually EXECUTES (just before tool.run),
       // so server interventions below (latch / budget / defer / dedup rejects) don't burn budget.
-      if (passed) {
-        // PASS-latch: the verify that FLIPPED this ran while passed was still false; every tool after
-        // a green verdict (verify included) is pure waste -> disable them all.
+      if (passed && name === "codegraph_verify") {
+        // PASS-latch (verify-scoped): re-verifying an already-green tree is pure waste. This latch is
+        // CLEARED the moment a NEW edit lands (see EDIT_TOOLS block below), so a subsequent task on this
+        // long-lived, sub-agent-shared server starts fresh. It must NOT block locate/read/apply — those
+        // are the legitimate first moves of the next task (this over-broad block previously wedged the
+        // whole tool surface across tasks once any verify went green).
         return reply(id, {
           content: [{ type: "text", text:
-            `TASK ALREADY VERIFIED — the affected tests PASS. Do NOT call any more tools. Emit your FINAL ANSWER now (list the files you changed).` }],
+            `ALREADY GREEN — the affected tests PASS and nothing changed since. Do NOT verify again; emit your FINAL ANSWER now (list the files you changed).` }],
           isError: false,
         });
       }
@@ -597,8 +722,8 @@ function handle(msg) {
         return reply(id, { content: [{ type: "text", text:
           `LOCATE BUDGET EXHAUSTED (${LOCATE_BUDGET} searches). You already have enough to act — STOP searching.` +
           hint +
-          ` The symbol you want almost certainly lives in a SHARED helper (src/widgets/common/), NOT a widget-local ` +
-          `constant — re-searching with the widget name won't surface a new answer. Go to codegraph_plan / ` +
+          ` The symbol you want almost certainly lives in a SHARED helper (a shared config/util module), NOT a feature-local ` +
+          `constant — re-searching with the feature name won't surface a new answer. Go to codegraph_plan / ` +
           `codegraph_trace(entry=<a symbol you already found>) / codegraph_apply_edit_at_site now.` }], isError: false });
       }
       // ---- codegraph_read gates: budget (B) + subsuming/overlap reject (A,C) + batch nudge (D) ----
@@ -633,7 +758,14 @@ function handle(msg) {
       }
       const { ok, text } = tool.run(args);
       callCount += 1; // only a REAL execution burns budget (gates above returned without counting)
-      if (name === "codegraph_read") { recordServed(args.targets); readRuns += 1; }
+      if (name === "codegraph_read") {
+        // Only a PRODUCTIVE read (returned real content) marks ranges served + burns read budget.
+        // A failed/empty read ("no matches", "(no output)", non-zero exit) must NOT record served
+        // ranges — otherwise a silently-failed read permanently locks the agent out of that file
+        // via a later DUPLICATE-READ reject, and shouldn't count against the "you've read enough" cap.
+        const productive = ok && !/\(no matches for|\(no output\)/i.test(text);
+        if (productive) { recordServed(args.targets); readRuns += 1; }
+      }
       if (["codegraph_plan", "codegraph_locate", "codegraph_impact"].includes(name)) recordHydratedFromOutput(text); // A
       if (name === "codegraph_locate") {
         locateRuns += 1;
@@ -657,6 +789,9 @@ function handle(msg) {
         memo.set(key, { hash, count: 1 });
       }
       if (EDIT_TOOLS.has(name)) {
+        passed = false; // a NEW edit invalidates any prior green verdict — including a STALE PASS latched
+                        // by a previous task on this long-lived server. This edit's own verdict is
+                        // (re)set from its output below, so a failing new edit can never inherit an old PASS.
         memo.clear(); // edits invalidate prior reads + reset dup counters
         servedRanges.clear();
         collectEdited(args, text); // track which planned sites are now edited (for g3)
@@ -668,14 +803,43 @@ function handle(msg) {
       // apply_edit_at_site --verify) means tests are green -> disable further tools.
       if (/\bverdict:\s*PASS\b/i.test(text)) passed = true;
       // A test/type VERDICT (PASS or FAIL) is INFORMATION the agent must read and act on —
-      // NOT a tool execution error. Returning isError:true on a legitimate FAIL makes the
-      // host (pydantic_ai) treat it as a retryable ModelRetry and, once max_retries is hit,
-      // crash the whole run instead of letting the agent fix the failing tests. So: if the
+      // NOT a tool execution error. Returning isError:true on a legitimate FAIL makes some hosts
+      // (e.g. pydantic-ai based ones) turn the hard tool error into a retry and crash the run at
+      // max_retries instead of letting the agent fix the failing tests. So: if the
       // output carries a 'verdict: PASS|FAIL' line, never flag it as an error (the text speaks
       // for itself). Only genuine failures with no verdict (script crash, bad anchor, missing
       // projectRoot) keep isError:true so the model still gets a real retry signal.
       const hasVerdict = /\bverdict:\s*(PASS|FAIL)\b/i.test(text);
-      return reply(id, { content: [{ type: "text", text }], isError: hasVerdict ? false : !ok });
+      // Trace dead-ends at JSX/prop boundaries (the graph doesn't track prop wiring). Instead of an
+      // empty result the model can't act on, teach it the known escape hatch: trace from the shared
+      // component's CONFIG symbol, or locate the concept directly in the shared config module.
+      let outText = text;
+      if (name === "codegraph_trace" && (!ok || /\bno\b.*(chain|result|path|reach)/i.test(text) || text === "(no output)")) {
+        outText =
+          text +
+          "\n\nHINT: a trace can dead-end when the value flows through a JSX/component PROP (the graph " +
+          "doesn't track prop wiring). Try one of: (1) trace from the SHARED component's config/among " +
+          "config symbol from the shared module instead of the caller; (2) codegraph_locate the concept directly; " +
+          "(3) if you already know the file, codegraph_read the render site. Do NOT keep re-tracing the same entry.";
+      }
+      // Bare-path read (no line range) can't be hydrated and returns nothing — the agent wastes a
+      // call and may loop. Teach it to get a file:line from locate/plan first, then read the range.
+      if (name === "codegraph_read") {
+        const bare = parseReadTargets(args.targets).filter(p => p.lo == null).map(p => p.file);
+        const unproductive = !ok || /\(no matches for|\(no output\)/i.test(text);
+        if (bare.length && unproductive) {
+          outText =
+            text +
+            `\n\nHINT: codegraph_read needs a LINE RANGE ('file:start-end') or a single line ('file:line') — ` +
+            `a bare path like '${bare[0]}' can't be hydrated. First run codegraph_locate or codegraph_plan ` +
+            `to get the symbol's file:line, THEN read that exact range (batch all ranges into one call).`;
+        }
+      }
+      // Discovery tools (SOFT_TOOLS) must NEVER return isError:true — some hosts (e.g. pydantic-ai
+      // based ones) turn a hard tool error into a retry and crash the run at max_retries. Their
+      // text is guidance; let it speak.
+      const softFail = SOFT_TOOLS.has(name);
+      return reply(id, { content: [{ type: "text", text: outText }], isError: hasVerdict || softFail ? false : !ok });
     } catch (e) {
       return reply(id, { content: [{ type: "text", text: `error: ${e.message}` }], isError: true });
     }

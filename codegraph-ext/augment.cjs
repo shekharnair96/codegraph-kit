@@ -21,13 +21,35 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// ts-morph is a transitive (pnpm, non-hoisted) dep — resolve it robustly rather than
-// assuming it is in the local node_modules.
+// ts-morph comes from the kit's engine (codegraph-ext/engine/node_modules), whose location the
+// indexer records in project_metadata.engine_dir. Fall back to the target repo's own node_modules
+// (incl. a pnpm store) so a repo that already ships ts-morph needs nothing extra.
 function requireTsMorph() {
+  const tried = [];
+  const attempt = spec => {
+    try {
+      return require(spec);
+    } catch (_) {
+      tried.push(spec);
+      return null;
+    }
+  };
+  let m = attempt("ts-morph");
+  if (m) return m;
   try {
-    return require("ts-morph");
+    const dbPath = path.join(__dirname, "..", ".codegraph", "codegraph.db");
+    const out = execFileSync("sqlite3", ["-json", dbPath, "SELECT value FROM project_metadata WHERE key='engine_dir';"], { encoding: "utf8" });
+    const engineDir = out.trim() ? JSON.parse(out)[0].value : null;
+    if (engineDir) {
+      m = attempt(path.join(engineDir, "node_modules", "ts-morph"));
+      if (m) return m;
+    }
   } catch (_) {
-    /* fall through */
+    /* DB absent */
+  }
+  if (process.env.CODEGRAPH_ENGINE_DIR) {
+    m = attempt(path.join(process.env.CODEGRAPH_ENGINE_DIR, "node_modules", "ts-morph"));
+    if (m) return m;
   }
   let dir = __dirname;
   for (let i = 0; i < 8; i++) {
@@ -38,13 +60,14 @@ function requireTsMorph() {
     }
     dir = path.dirname(dir);
   }
-  throw new Error("[augment] cannot resolve ts-morph from any ancestor node_modules/.pnpm");
+  throw new Error(`[augment] cannot resolve ts-morph (tried: ${tried.join(", ")}). Run install.sh so the engine's dependencies are installed.`);
 }
 const { Project } = requireTsMorph();
 
 const APP_ROOT = path.resolve(__dirname, "..");
 const DB = path.join(APP_ROOT, ".codegraph", "codegraph.db");
-const SRC = path.join(APP_ROOT, "src");
+// Source root: `src/` when present (the common layout), else the repo root.
+const SRC = fs.existsSync(path.join(APP_ROOT, "src")) ? path.join(APP_ROOT, "src") : APP_ROOT;
 const ANNOTATIONS_FILE = path.join(__dirname, "annotations.json");
 const NOW = Date.now();
 
@@ -109,7 +132,7 @@ const project = new Project({
   skipFileDependencyResolution: true,
   compilerOptions: { allowJs: true, jsx: 2 },
 });
-project.addSourceFilesAtPaths([path.join(SRC, "**/*.ts"), path.join(SRC, "**/*.tsx")]);
+project.addSourceFilesAtPaths([path.join(SRC, "**/*.ts"), path.join(SRC, "**/*.tsx"), "!" + path.join(SRC, "**/node_modules/**"), "!" + path.join(APP_ROOT, "codegraph-ext/**")]);
 const isTest = p => /\.test\.tsx?$/.test(p);
 const isSkippable = p => /(__mocks__|__snapshots__)\//.test(p);
 

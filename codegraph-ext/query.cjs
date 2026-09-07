@@ -35,7 +35,7 @@ const q = sql => {
   return out.trim() ? JSON.parse(out) : [];
 };
 // Paths printed by plan/impact/locate/read are meant to be fed straight back into codegraph_read /
-// codegraph_apply. Abbreviating them (e.g. src/widgets/ -> …/) breaks that round-trip: the next
+// codegraph_apply. Abbreviating them (e.g. src/some/deep/dir/ -> …/) breaks that round-trip: the next
 // tool can't open a '…/…' path. So emit the VERBATIM repo-relative path (strip only the 'file:'
 // scheme prefix from KG rows). Display is a few chars longer; the copy-paste actually works.
 const short = p => String(p).replace(/^file:/, "");
@@ -451,7 +451,7 @@ function plan() {
   console.log(`  - Prefer editing the definition (single source of truth) over each call site.`);
   console.log(`  - Use anchored replace_in_file; do not rewrite whole files.`);
   console.log(`  - Update the test-assert sites above only if the change makes them fail.`);
-  console.log(`  - Do NOT touch other widgets or unrelated files.`);
+  console.log(`  - Do NOT touch other features or unrelated files.`);
   console.log(
     `  - Verify once at the end with:  npm run cg:test -- ${r.covering.join(" ") || "<changed-file>"}`
   );
@@ -593,6 +593,26 @@ function locate() {
 
   // ---- score: DISTINCT-TERM COVERAGE first (a symbol matching series+width+stroke beats one that
   // only name-matches "series"); name-matched terms weigh more than body-only; then export/kind. ----
+  // LEXICAL TIER (added after T4): when the query IS an identifier, an exact name match must outrank
+  // a prefix match, and a prefix must outrank a mere substring. Without this, renaming ColumnConfig
+  // returned ColumnConfigItem/Labels/Type and a same-named interface while the actual component fell
+  // out of the top 5 -- every ColumnConfig* name ties on coverage, so FTS rank decided the order.
+  // Deliberately lexical: this is a string-equality problem, and an embedding-side fix would trade
+  // one ranking surprise for a subtler one.
+  const qIdent = query.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const queryIsIdent = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(query.trim());
+  // Only let kind break ties when the query actually names a kind.
+  const KIND_WORDS = { component: ["function", "class"], interface: ["interface"], type: ["type_alias"],
+                       constant: ["constant"], function: ["function"], hook: ["function"] };
+  const wantedKinds = new Set(words.flatMap(w => KIND_WORDS[w] || []));
+  const lexTier = name => {
+    if (!queryIsIdent) return 0;
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (n === qIdent) return 3;        // exact
+    if (n.startsWith(qIdent)) return 2; // prefix (ColumnConfigItem for query ColumnConfig)
+    if (n.includes(qIdent)) return 1;   // substring
+    return 0;
+  };
   const scored = [...cand.values()]
     .map(c => {
       const hay = `${c.name} ${c.file}`.toLowerCase();
@@ -603,7 +623,9 @@ function locate() {
       const need = Math.min(2, words.length);
       // keep only real signal: a name-index hit, OR coverage of >=need distinct query terms
       if (!c.nameHit && cov < need) return null;
-      const score = cov * 100 + nameTerms.size * 12 + bodyTerms.size * 4 + (Number(c.exported) ? 3 : 0);
+      const kindBonus = wantedKinds.size && wantedKinds.has(c.kind) ? 6 : 0;
+      const score = lexTier(c.name) * 1000 + cov * 100 + nameTerms.size * 12 +
+                    bodyTerms.size * 4 + kindBonus + (Number(c.exported) ? 3 : 0);
       return { ...c, score, cov, why: nameTerms.size >= bodyTerms.size ? "name" : "body" };
     })
     .filter(Boolean)
@@ -643,8 +665,8 @@ const isIdentQuery = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(query.trim());
     } else if (isIdentQuery && !exact) {
       console.log(`\n>> NO EXACT-NAME MATCH: "${query}" is not an indexed symbol — you're guessing a name that doesn't exist.`);
       console.log(
-        `   The thing you want likely lives in a SHARED helper (try src/widgets/common/) under a different name.` +
-          ` Trace outward from the widget: codegraph_trace(entry="widgets/<w>", concept="<what>").`
+        `   The thing you want likely lives in a SHARED helper (a shared config/util module) under a different name.` +
+          ` Trace outward from the feature: codegraph_trace(entry="<feature dir>", concept="<what>").`
       );
     } else if (conceptStrong) {
       console.log(
@@ -677,8 +699,8 @@ const isIdentQuery = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(query.trim());
 
 // ---------- swap: one-shot literal value change (locate->plan->read->apply collapsed) ----------
 // For the ultra-common "change this constant/color/number" task. Given a SYMBOL and an exact
-// old->new value, it edits only WITHIN that symbol's definition span (so `#07A093` swaps totalGMV
-// alone, never the other three metrics) PLUS the covering-test literal-assert lines that hard-code
+// old->new value, it edits only WITHIN that symbol's definition span (so `#07A093` swaps the one metric's color
+// alone, never the other metrics) PLUS the covering-test literal-assert lines that hard-code
 // the same old value. This is the primitive that saves weaker models the read-spiral: no anchors
 // to hand-build, no whole-file reads, no risk of over-broad find/replace.
 //   node query.cjs swap <SymbolName> <oldValue> <newValue> [--tests]
@@ -757,10 +779,10 @@ function swap() {
 
 // ---------- trace: FORWARD reachability (entry -> ... -> shared symbol) ----------
 // The missing DOWNWARD primitive. locate/impact answer name-lookup and REVERSE refs ('who uses X');
-// trace answers 'what does this widget/symbol REACH' — following calls/references OUT from an entry
+// trace answers 'what does this feature/symbol REACH' — following calls/references OUT from an entry
 // (a symbol name OR a file/path prefix) up to N hops, optionally filtered to paths that reach a
-// CONCEPT (e.g. 'color'). Kills the guess-a-widget-local-constant spiral: the model asks 'does
-// itemSales reach the primary color?' and gets the exact chain instead of inventing fake names.
+// CONCEPT (e.g. 'color'). Kills the guess-a-feature-local-constant spiral: the model asks 'does
+// this widget reach the primary color?' and gets the exact chain instead of inventing fake names.
 //   node query.cjs trace <SymbolOrPathPrefix> [--concept <words>] [--depth N]
 function trace() {
   const raw = process.argv.slice(3).filter(a => a !== undefined);

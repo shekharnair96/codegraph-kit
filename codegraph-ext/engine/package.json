@@ -1,0 +1,21 @@
+{
+  "name": "codegraph-kit-indexer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds the .codegraph/codegraph.db knowledge graph that codegraph-kit's MCP server queries. TypeScript/JavaScript, via the TypeScript compiler API.",
+  "license": "MIT",
+  "bin": {
+    "codegraph": "./bin/codegraph.js"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "node --test ../../test/"
+  },
+  "dependencies": {
+    "ts-morph": "^24.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

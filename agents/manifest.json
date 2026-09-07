@@ -1,0 +1,23 @@
+{
+  "agents": [
+    {
+      "name": "kg-sonnet",
+      "display": "KG Coder (Sonnet)",
+      "tier": "sonnet",
+      "description": "KG-only code agent (Sonnet, cost-optimal). Discovery ONLY via codegraph_* tools; edits via codegraph_apply_edit_at_site. Send it a scoped change + the absolute repo root. Never delegates."
+    },
+    {
+      "name": "kg-opus",
+      "display": "KG Coder (Opus)",
+      "tier": "opus",
+      "description": "KG-only code agent (Opus, fewest turns/tokens but ~4x the cost of Sonnet). Discovery ONLY via codegraph_* tools; edits via codegraph_apply_edit_at_site. Send it a scoped change + the absolute repo root. Never delegates."
+    }
+  ],
+  "mcpServer": "codegraph",
+  "prompt": "kg-coder.prompt.md",
+  "models": {
+    "puppy": { "sonnet": "claude-5-sonnet", "opus": "claude-4-8-opus-long" },
+    "claude": { "sonnet": "sonnet", "opus": "opus" },
+    "opencode": { "sonnet": "anthropic/claude-sonnet-5", "opus": "anthropic/claude-opus-5" }
+  }
+}

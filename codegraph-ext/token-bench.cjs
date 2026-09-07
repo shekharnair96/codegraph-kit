@@ -7,7 +7,7 @@
  *
  * ZERO-CONFIG: it auto-discovers the highest-fan-in questions in whatever repo it
  * runs against (the most-mocked module, the most-covered source file, the widest
- * prop surface, a documented symbol), so it is drop-in for any microapp that has
+ * prop surface, a documented symbol), so it is drop-in for any repo that has
  * the codegraph-ext overlay built. No hand-picked file paths.
  *
  * For each question we compute:

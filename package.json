@@ -1,25 +1,30 @@
 {
   "name": "codegraph-mcp",
-  "version": "0.1.0",
-  "description": "Dependency-free MCP server exposing a codebase's symbol graph and a symbol-aware edit loop as first-class agent tools.",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Standalone code knowledge-graph MCP server for TypeScript/JavaScript repos: a built-in indexer, a symbol-aware edit loop as first-class agent tools, and KG-only coding agents for Claude Code, OpenCode, Cursor, Codex CLI and Code Puppy.",
   "keywords": [
     "mcp",
     "model-context-protocol",
     "codegraph",
+    "knowledge-graph",
     "code-navigation",
     "ai-agent",
     "llm",
-    "sqlite"
+    "sqlite",
+    "typescript"
   ],
   "license": "MIT",
   "type": "commonjs",
   "bin": {
-    "codegraph-mcp": "codegraph-ext/codegraph-mcp.cjs"
+    "codegraph-mcp": "codegraph-ext/codegraph-mcp.cjs",
+    "codegraph": "codegraph-ext/engine/bin/codegraph.js"
   },
   "scripts": {
+    "postinstall": "cd codegraph-ext/engine && npm install --no-audit --no-fund",
+    "test": "node --test \"test/*.test.cjs\"",
+    "cg:index": "node codegraph-ext/engine/bin/codegraph.js index",
     "cg:mcp": "node codegraph-ext/codegraph-mcp.cjs",
-    "cg:build-body-index": "node codegraph-ext/build-body-index.cjs",
-    "cg:augment": "node codegraph-ext/augment.cjs",
     "cg:refresh": "node codegraph-ext/build-body-index.cjs && node codegraph-ext/augment.cjs",
     "cg:locate": "node codegraph-ext/query.cjs locate",
     "cg:plan": "node codegraph-ext/query.cjs plan",
@@ -30,10 +35,9 @@
     "cg:verify": "node codegraph-ext/verify-affected.cjs",
     "cg:test-one": "node codegraph-ext/test-one.cjs",
     "cg:graph": "node codegraph-ext/cg-graph.cjs",
-    "cg:bench": "node codegraph-ext/token-bench.cjs",
-    "cg:install-hook": "node codegraph-ext/install-hook.cjs"
+    "cg:bench": "node codegraph-ext/token-bench.cjs"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   }
 }

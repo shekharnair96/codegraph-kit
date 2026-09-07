@@ -36,7 +36,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 2.4em 0; }
 </head>
 <body>
 <h1 id="codegraph-ab-experiment-cutting-agent-cost-with-a-knowledge-graph">CodeGraph A/B Experiment — Cutting Agent Cost with a Knowledge Graph</h1>
-<p><em>A production TypeScript/React microapp · knowledge-graph-assisted coding agents · results + playbook</em></p>
+<p><em>A production TypeScript/React front-end codebase · knowledge-graph-assisted coding agents · results + playbook</em></p>
 <h2 id="tldr-for-the-room">TL;DR (for the room)</h2>
 <p>We tested whether giving a coding agent a <strong>knowledge graph (KG)</strong> of the codebase — instead
 of letting it grep/read files — makes it cheaper and faster. Same task, same repo, every kept
@@ -92,7 +92,7 @@ matching them on correctness.</p>
 <hr />
 <h2 id="1-the-task-identical-across-all-cells">1. The task (identical across all cells)</h2>
 <blockquote>
-<p>In the Item Sales widget, change the primary graph series color to <code>#FF6B6B</code> and set the line
+<p>In the sales chart widget, change the primary graph series color to <code>#FF6B6B</code> and set the line
 width to <code>3px</code>. This affects the default/daily chart, the real-time ("Today") chart, and the
 compare-mode chart. Do <strong>not</strong> touch the dashed comparison series. Fix any tests the change
 breaks.</p>
@@ -253,7 +253,7 @@ the cheaper model, Sonnet, wins decisively.)</em></p>
   reads the <code>STRONG MATCH</code> signal and edits immediately.</li>
 <li><strong>Sonnet flails more without structure</strong> — worst baseline (84 calls); it ignored <code>STRONG
   MATCH</code> and over-explored. <strong>But</strong> the KG closes that gap enough that its 5× lower price wins on cost.</li>
-<li><strong>Correct scope can be <em>harder</em>.</strong> The tight, correct edit (only <code>totalGMV</code>) triggered a
+<li><strong>Correct scope can be <em>harder</em>.</strong> The tight, correct edit (only the primary metric) triggered a
   parameterized-invariant test that the <em>sloppy</em> all-metrics edit sidestepped. Good scoping isn't
   always the easy path — the tooling has to help with the test fallout, which is what verify
   hydration does.</li>
@@ -483,12 +483,12 @@ screencast (kept with the private harness).</p>
 privately; the numbers above are reproduced verbatim from those recordings.</em></p>
 <hr />
 <h2 id="figures">Figures</h2>
-<p><img alt="Cost per task" src="charts/01-cost-per-task.png" /></p>
-<p><img alt="Naive baseline cost" src="charts/02-naive-baseline-cost.png" /></p>
-<p><img alt="Tuning series — turns" src="charts/03-tuning-series-turns.png" /></p>
-<p><img alt="Tool-calls per task" src="charts/04-toolcalls-per-task.png" /></p>
-<p><img alt="Cache composition" src="charts/05-cache-composition.png" /></p>
-<p><img alt="Median time (ambiguity vs blast radius)" src="charts/06-exp8-median-time.png" /></p>
-<p><img alt="Mean turns (ambiguity vs blast radius)" src="charts/07-exp8-mean-turns.png" /></p>
+<p><img alt="Cost per task" src="figures/01-cost-per-task.png" /></p>
+<p><img alt="Naive baseline cost" src="figures/02-naive-baseline-cost.png" /></p>
+<p><img alt="Tuning series — turns" src="figures/03-tuning-series-turns.png" /></p>
+<p><img alt="Tool-calls per task" src="figures/04-toolcalls-per-task.png" /></p>
+<p><img alt="Cache composition" src="figures/05-cache-composition.png" /></p>
+<p><img alt="Median time (ambiguity vs blast radius)" src="figures/06-tier-median-time.png" /></p>
+<p><img alt="Mean turns (ambiguity vs blast radius)" src="figures/07-tier-mean-turns.png" /></p>
 </body>
 </html>

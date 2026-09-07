@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+#
+# codegraph-kit installer
+# ------------------------
+# Points the codegraph MCP server + the two KG-only agents at a target repo, for whatever
+# agent host(s) you actually use.
+#
+# Usage:
+#   ./install.sh /abs/path/to/repo-or-subdir                    # auto-detect hosts (default)
+#   ./install.sh /abs/path/to/repo-or-subdir --host claude      # one host
+#   ./install.sh /abs/path/to/repo-or-subdir --host claude,opencode
+#   ./install.sh --check /abs/path/to/repo-or-subdir            # diagnose only, change nothing
+#
+# Hosts:  claude | cursor | codex | opencode | puppy | none | auto
+#   auto (default)  install for every host detected on this machine; if none is detected,
+#                   fall back to `none` and just print the registration snippet.
+#
+# The target is the directory that holds your source (usually where package.json lives; for a
+# monorepo, the package you want indexed). Run this repeatedly for different repos — the host
+# wiring is idempotent; each repo gets its own codegraph-ext/ + DB.
+#
+# The indexing engine lives in codegraph-ext/engine/ (plain Node, two npm deps installed here
+# once). Every target repo shares it; nothing needs to be on your PATH.
+#
+set -euo pipefail
+
+KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOSTS_CLI="$KIT/install/hosts.cjs"
+
+# --- arg parse: --check anywhere, --host repeatable/comma-separated, first bare arg = target ---
+MODE="install"
+TARGET=""
+HOSTS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) MODE="check"; shift ;;
+    --host)
+      [ $# -ge 2 ] || { echo "ERROR: --host needs a value."; exit 1; }
+      HOSTS="${HOSTS:+$HOSTS,}$2"; shift 2 ;;
+    --host=*) HOSTS="${HOSTS:+$HOSTS,}${1#--host=}"; shift ;;
+    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "ERROR: unknown option '$1'"; exit 1 ;;
+    *)
+      if [ -z "$TARGET" ]; then TARGET="$1"; else echo "ERROR: unexpected argument '$1'"; exit 1; fi
+      shift ;;
+  esac
+done
+
+command -v node >/dev/null 2>&1 || { echo "ERROR: node not found (>= 18 required)."; exit 1; }
+# --- the indexer writes the graph through the sqlite3 command-line tool ---
+command -v sqlite3 >/dev/null 2>&1 || { echo "ERROR: sqlite3 CLI not found (needed to build the graph DB)."; exit 1; }
+
+if [ -z "$TARGET" ]; then
+  echo "Usage: ./install.sh /abs/path/to/repo-or-subdir [--host claude,opencode,...]"; exit 1
+fi
+[ -d "$TARGET" ] || { echo "ERROR: target '$TARGET' is not a directory."; exit 1; }
+TARGET="$(cd "$TARGET" && pwd)"   # normalize to absolute
+
+ENGINE="$KIT/codegraph-ext/engine"
+CG_BIN="$ENGINE/bin/codegraph.js"
+
+# --- resolve the host list (auto/empty -> detect; nothing detected -> `none`) ---
+if [ -z "$HOSTS" ] || [ "$HOSTS" = "auto" ]; then
+  DETECTED="$(node "$HOSTS_CLI" detect --target "$TARGET" --kit "$KIT" | tr '\n' ',' | sed 's/,$//')"
+  if [ -n "$DETECTED" ]; then HOSTS="$DETECTED"; else HOSTS="none"; fi
+fi
+
+# --- --check: report what's set up vs missing, then exit WITHOUT changing anything ---
+if [ "$MODE" = "check" ]; then
+  echo "==> codegraph setup check for: $TARGET"
+  echo "    hosts: $HOSTS"
+  ok=1
+  if [ -f "$TARGET/codegraph-ext/read-context.cjs" ] && [ -f "$TARGET/codegraph-ext/codegraph-mcp.cjs" ]; then
+    echo "    [ok]      codegraph-ext/ scripts present"
+  else
+    echo "    [MISSING] codegraph-ext/ scripts  (the MCP server shells out to <root>/codegraph-ext/*.cjs)"; ok=0
+  fi
+  if [ -f "$TARGET/.codegraph/codegraph.db" ]; then
+    echo "    [ok]      .codegraph/codegraph.db present"
+  else
+    echo "    [MISSING] .codegraph/codegraph.db  (graph index)"; ok=0
+  fi
+  if [ -f "$ENGINE/node_modules/typescript/package.json" ]; then
+    echo "    [ok]      engine dependencies installed"
+  else
+    echo "    [MISSING] engine dependencies (cd codegraph-ext/engine && npm install)"; ok=0
+  fi
+  node "$HOSTS_CLI" check --host "$HOSTS" --target "$TARGET" --kit "$KIT" || ok=0
+  if [ "$ok" = "1" ]; then
+    echo "==> READY. This repo is fully set up."
+    exit 0
+  fi
+  echo "==> NOT READY. Fix with:  ./install.sh $TARGET   (idempotent; copies scripts + builds index)"
+  exit 1
+fi
+
+echo "==> [1/4] install the indexing engine's dependencies (once; shared by every target repo)"
+if [ -f "$ENGINE/node_modules/typescript/package.json" ]; then
+  echo "    already installed -> $ENGINE/node_modules"
+else
+  ( cd "$ENGINE" && npm install --no-audit --no-fund )
+  echo "    installed -> $ENGINE/node_modules"
+fi
+
+echo "==> [2/4] copy tooling into target repo"
+mkdir -p "$TARGET/codegraph-ext"
+# copy scripts; do NOT clobber an existing annotations.json (it's the repo's durable memory)
+for f in "$KIT"/codegraph-ext/*.cjs; do cp "$f" "$TARGET/codegraph-ext/"; done
+[ -f "$TARGET/codegraph-ext/annotations.json" ] || cp "$KIT/codegraph-ext/annotations.json" "$TARGET/codegraph-ext/"
+echo "    scripts synced -> $TARGET/codegraph-ext/"
+
+echo "==> [3/4] build the graph DB (init if needed, index, then overlays)"
+node "$CG_BIN" init "$TARGET"                                # idempotent: no-op if already initialized
+node "$CG_BIN" index "$TARGET"                               # always (re-)index to latest source
+( cd "$TARGET" && node codegraph-ext/augment.cjs ) || echo "    (skipping overlay augment: needs ts-morph resolvable -- core locate/plan/trace/apply/verify still work)"
+( cd "$TARGET" && node codegraph-ext/build-body-index.cjs ) || echo "    (skipping body index: will self-heal on first codegraph_read call)"
+echo "    DB built -> $TARGET/.codegraph/codegraph.db"
+
+echo "==> [4/4] wire up the agent host(s): $HOSTS"
+node "$HOSTS_CLI" install --host "$HOSTS" --target "$TARGET" --kit "$KIT"
+
+echo ""
+echo "Done. KG is installed and indexed for:  $TARGET"
+echo ""
+echo "Next:"
+node "$HOSTS_CLI" next --host "$HOSTS" --target "$TARGET" --kit "$KIT"
+
+cat <<EOF
+
+Run this installer on another repo any time — each repo gets its own codegraph-ext/ + DB.
+
+Maintenance:
+  - After a big refactor / branch switch, rebuild the graph:
+      node $KIT/codegraph-ext/engine/bin/codegraph.js index $TARGET && node $TARGET/codegraph-ext/augment.cjs
+  - After you UPDATE the kit's scripts: re-run install.sh $TARGET to re-copy them.
+  - Restart the MCP server between unrelated sessions (per-run counters are in-memory).
+EOF

@@ -18,7 +18,6 @@
 const {
   inferChangedFromGit,
   resolveAffectedTests,
-  ensureXarcSetup,
   jestArgs,
   fingerprint,
   suiteFingerprint,
@@ -94,7 +93,6 @@ if (!testList.length) {
 } else if (!toRun.length) {
   lines.push(`tests: PASS  (all ${stickyPass.length} affected suite(s) already green, coverage unchanged)`);
 } else {
-  ensureXarcSetup();
   const tmp = path.join(APP_ROOT, ".codegraph", `jest-${Date.now()}.json`);
   const { args } = jestArgs(["--json", `--outputFile=${tmp}`, "--", ...toRun]);
   spawnSync("npx", args, { cwd: APP_ROOT, stdio: "ignore" });

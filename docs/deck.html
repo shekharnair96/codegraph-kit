@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodeGraph — KG-only code agents</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --panel2:#0f1730; --ink:#eaf0ff; --muted:#9fb0d0;
+    --accent:#0071dc; --spark:#ffc220; --good:#22c55e; --bad:#ef4444; --line:#24304f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  .deck{height:100vh;width:100vw;position:relative}
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+    padding:5vh 7vw;animation:fade .35s ease}
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  h1{font-size:clamp(28px,5vw,58px);line-height:1.05;margin:0 0 .3em}
+  h2{font-size:clamp(22px,3.4vw,40px);margin:0 0 .5em}
+  h3{font-size:clamp(16px,1.6vw,22px);margin:.2em 0;color:var(--spark);font-weight:600;letter-spacing:.02em}
+  p,li{font-size:clamp(14px,1.5vw,20px);color:var(--ink)}
+  .muted{color:var(--muted)}
+  .accent{color:var(--spark)}
+  .kicker{color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.15em;font-size:clamp(11px,1.2vw,14px);margin-bottom:1em}
+  ul{margin:.4em 0 0;padding-left:1.1em}
+  li{margin:.45em 0}
+  .grid{display:grid;gap:24px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px}
+  .card.bad{border-color:#5b2330;background:linear-gradient(180deg,#1a1220,#121a30)}
+  .card.good{border-color:#1f5137;background:linear-gradient(180deg,#0f2018,#121a30)}
+  .big{font-size:clamp(30px,4vw,52px);font-weight:800;line-height:1}
+  .tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;margin-bottom:10px}
+  .tag.red{background:#3a1720;color:#ffb4c0}
+  .tag.green{background:#123322;color:#9af5c0}
+  /* bar chart */
+  .bars{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+  .bar-row{display:grid;grid-template-columns:190px 1fr 90px;align-items:center;gap:14px}
+  .bar-track{background:#0a1226;border:1px solid var(--line);border-radius:8px;height:30px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:7px 0 0 7px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:8px;font-size:12px;font-weight:700;color:#04121f;white-space:nowrap}
+  .bar-lbl{color:var(--muted);font-size:14px}
+  .bar-val{text-align:right;font-weight:700}
+  .win{color:var(--good);font-weight:800}
+  table{border-collapse:collapse;width:100%;font-size:clamp(13px,1.4vw,18px)}
+  th,td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--accent);border-bottom:2px solid var(--accent)}
+  tr.hl td{background:#0f2018;color:#dfffe9;font-weight:700}
+  .fig{display:flex;align-items:center;justify-content:center;height:62vh}
+  .fig img{max-width:100%;max-height:100%;border-radius:12px;border:1px solid var(--line);background:#fff;padding:8px}
+  .two-fig{display:grid;grid-template-columns:1fr 1fr;gap:20px;height:60vh}
+  .two-fig figure{margin:0;display:flex;flex-direction:column;height:100%}
+  .two-fig img{flex:1;min-height:0;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff;padding:8px}
+  figcaption{color:var(--muted);font-size:13px;margin-top:8px;text-align:center}
+  .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+  .chip{background:#0a1226;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:600}
+  .chip.k{border-color:var(--accent);color:#cfe3ff}
+  .arrow{color:var(--muted);font-size:22px}
+  /* chrome */
+  .bottom{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;
+    padding:10px 18px;color:var(--muted);font-size:13px}
+  .progress{position:fixed;top:0;left:0;height:4px;background:linear-gradient(90deg,var(--accent),var(--spark));transition:width .3s}
+  .brand{position:fixed;top:14px;right:20px;font-weight:800;letter-spacing:.02em;color:var(--muted);font-size:13px}
+  .brand b{color:var(--spark)}
+  kbd{background:#0a1226;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 7px;font-size:12px}
+  .lead{font-size:clamp(16px,1.9vw,24px);color:var(--muted);max-width:52ch}
+pill{display:inline-block;background:#0a1226;border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:4px 6px 0 0;font-size:13px}
+  /* diagrams */
+  .svg-wrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .diagram{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;color:var(--muted);font-size:13px}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+  .verbs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+  .verb{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .verb h4{margin:0;font-size:clamp(15px,1.5vw,19px);color:var(--spark)}
+  .verb code{color:#cfe3ff;font-size:13px}
+  .  .verb p{font-size:clamp(12px,1.25vw,15px);margin:.35em 0 0;color:var(--muted)}
+  .io{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0 4px}
+  .io .in,.io .out{font-size:11px;font-weight:700;padding:4px 9px;border-radius:8px;line-height:1.25}
+  .io .in{background:#0a1a33;color:#9ecbff;border:1px solid #1c3a63}
+  .io .out{background:#0f2018;color:#9af5c0;border:1px solid #1f5137}
+  .io .ar{color:var(--spark);font-weight:800;font-size:14px}
+  .io .lbl{font-size:9px;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-right:-3px}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="brand">Code<b>Graph</b></div>
+<div class="deck" id="deck">
+
+  <!-- 1 -->
+  <section class="slide active">
+    <div class="kicker">KG-only code agents · A/B validated</div>
+    <h1>CodeGraph</h1>
+    <p class="lead">Give an AI code agent a <span class="accent">knowledge graph</span> instead of grep &amp; read — and watch it get <b>~10× cheaper</b>, <b>~3.5× fewer steps</b>, and stay correct.</p>
+    <p class="muted" style="margin-top:2em">Same task, same repo, correct + green in every kept cell.</p>
+  </section>
+
+  <!-- 1b: live demo intro -->
+  <section class="slide">
+    <div class="kicker">Live demo &mdash; let's watch it happen</div>
+    <h2>Same question. Two agents. One's blindfolded.</h2>
+    <p class="lead">Both are the <b>same</b> Sonnet model, asked the same real question about <i>this</i> codebase. The only difference: one has grep/read/shell, the other has <span class="accent">only the knowledge graph</span>.</p>
+    <div class="card" style="margin-top:18px;border-color:#2a3a63;background:linear-gradient(180deg,#0e1830,#121a30)">
+      <span class="tag" style="background:#0a1a33;color:#9ecbff">THE PROMPT WE'LL RUN (verbatim, both agents)</span>
+      <p style="font-size:clamp(15px,1.8vw,22px);color:#eaf0ff;margin:.5em 0 0;line-height:1.4">
+        &ldquo;Which CCM key is responsible for showing the <b>new date picker</b>, and what is the structure of the key &amp; value to be put on CCM?&rdquo;
+      </p>
+    </div>
+    <div class="grid cols-2" style="margin-top:18px">
+      <div class="card good"><span class="tag green">KG-only</span><p>no grep / read / shell &mdash; discovery via <code>locate</code> + <code>read</code> on the graph</p></div>
+      <div class="card bad"><span class="tag red">Naive</span><p>grep + read_file + shell &mdash; the usual way</p></div>
+    </div>
+    <p class="accent" style="margin-top:16px;font-weight:700">&rarr; Switching to the terminal now &mdash; watch the token counter &amp; the clock at the end of each pane.</p>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide">
+    <div class="kicker">The problem</div>
+    <h2>How an AI agent normally explores a big repo</h2>
+    <div class="grid cols-2" style="align-items:center">
+      <div class="svg-wrap">
+        <svg class="diagram" viewBox="0 0 460 300" role="img" aria-label="Agent grepping and re-reading many files">
+          <defs>
+            <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#aab6cc"/></marker>
+            <marker id="ahr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ef4444"/></marker>
+          </defs>
+          <g font-size="10" fill="#9fb0d0" text-anchor="middle">
+            <rect x="250" y="20"  width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="285" y="41">a.tsx</text>
+            <rect x="360" y="60"  width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="395" y="81">utils.ts</text>
+            <rect x="370" y="150" width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="405" y="171">hooks.ts</text>
+            <rect x="300" y="235" width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="335" y="256">index.ts</text>
+            <rect x="170" y="245" width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="205" y="266">test.tsx</text>
+            <rect x="235" y="120" width="70" height="34" rx="6" fill="#0a1226" stroke="#24304f"/><text x="270" y="141">types.ts</text>
+          </g>
+          <circle cx="80" cy="150" r="42" fill="#121a30" stroke="#0071dc" stroke-width="2"/>
+          <text x="80" y="146" font-size="12" fill="#eaf0ff" text-anchor="middle" font-weight="700">AGENT</text>
+          <text x="80" y="162" font-size="9" fill="#9fb0d0" text-anchor="middle">grep + read</text>
+          <g stroke="#aab6cc" stroke-width="1.6" fill="none">
+            <path d="M120,135 Q200,20 250,37" marker-end="url(#ah)"/>
+            <path d="M122,150 Q240,70 360,77" marker-end="url(#ah)"/>
+            <path d="M122,158 Q250,150 370,167" marker-end="url(#ah)"/>
+            <path d="M116,175 Q210,220 300,250" marker-end="url(#ah)"/>
+            <path d="M108,185 Q150,240 170,258" marker-end="url(#ah)"/>
+            <path d="M120,150 Q180,120 235,133" marker-end="url(#ah)"/>
+          </g>
+          <g stroke="#ef4444" stroke-width="1.6" fill="none" stroke-dasharray="4 3">
+            <path d="M360,90 Q250,180 122,165" marker-end="url(#ahr)"/>
+            <path d="M300,140 Q200,100 124,146" marker-end="url(#ahr)"/>
+          </g>
+          <text x="250" y="294" font-size="10" fill="#ef4444" text-anchor="middle">dashed = re-reading files it already saw</text>
+        </svg>
+        <div class="legend">
+          <span><span class="dot" style="background:#aab6cc"></span>grep / read call</span>
+          <span><span class="dot" style="background:#ef4444"></span>wasted re-read</span>
+        </div>
+      </div>
+      <div>
+        <div class="card bad">
+          <span class="tag red">WITHOUT CodeGraph</span>
+          <ul>
+            <li><b>grep &times; 26, read_file &times; 14&hellip;</b> hunting for the right symbol</li>
+            <li>Re-reads the same files; whole files for 3 relevant lines</li>
+            <li>Every step re-sends a <b>growing context</b> &rarr; tokens explode</li>
+            <li>Guesses symbol names, edits the wrong place, retries</li>
+          </ul>
+        </div>
+        <p class="muted" style="margin-top:12px"><b>tokens &asymp; turns &times; growing-context.</b> The exploration spiral is where the money and minutes go &mdash; <b>84 calls / 8.05M tokens</b> for one small change.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide">
+    <div class="kicker">The idea</div>
+    <h2>Discover through a graph, not the filesystem</h2>
+    <div class="grid cols-2" style="align-items:center">
+      <div class="svg-wrap">
+        <svg class="diagram" viewBox="0 0 460 300" role="img" aria-label="Knowledge graph of symbols and edges">
+          <defs>
+            <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#22c55e"/></marker>
+          </defs>
+          <!-- edges (calls / references) -->
+          <g stroke="#2f3d63" stroke-width="1.6">
+            <line x1="250" y1="150" x2="150" y2="70"/>
+            <line x1="250" y1="150" x2="150" y2="235"/>
+            <line x1="250" y1="150" x2="370" y2="90"/>
+            <line x1="250" y1="150" x2="375" y2="215"/>
+            <line x1="150" y1="70"  x2="370" y2="90"/>
+            <line x1="150" y1="235" x2="375" y2="215"/>
+          </g>
+          <!-- neighbor nodes (def / ref / test) highlighted green -->
+          <g font-size="9.5" text-anchor="middle">
+            <circle cx="150" cy="70"  r="26" fill="#0f2018" stroke="#22c55e" stroke-width="2"/><text x="150" y="67" fill="#cfe3ff">buildPref</text><text x="150" y="79" fill="#9fb0d0">definition</text>
+            <circle cx="370" cy="90"  r="26" fill="#0f2018" stroke="#22c55e" stroke-width="2"/><text x="370" y="87" fill="#cfe3ff">salesChart</text><text x="370" y="99" fill="#9fb0d0">reference</text>
+            <circle cx="375" cy="215" r="26" fill="#0f2018" stroke="#22c55e" stroke-width="2"/><text x="375" y="212" fill="#cfe3ff">pref.test</text><text x="375" y="224" fill="#9fb0d0">covering test</text>
+            <circle cx="150" cy="235" r="22" fill="#0a1226" stroke="#24304f"/><text x="150" y="238" fill="#9fb0d0">types</text>
+          </g>
+          <!-- target node -->
+          <circle cx="250" cy="150" r="30" fill="#2a2410" stroke="#ffc220" stroke-width="2.5"/>
+          <text x="250" y="147" font-size="10.5" fill="#ffe9a8" text-anchor="middle" font-weight="700">ComparePreset</text>
+          <text x="250" y="160" font-size="9" fill="#ffd873" text-anchor="middle">target symbol</text>
+          <!-- agent single precise arrow -->
+          <circle cx="55" cy="150" r="30" fill="#121a30" stroke="#0071dc" stroke-width="2"/>
+          <text x="55" y="148" font-size="11" fill="#eaf0ff" text-anchor="middle" font-weight="700">AGENT</text>
+          <text x="55" y="161" font-size="8" fill="#9fb0d0" text-anchor="middle">1 query</text>
+          <path d="M86,150 L214,150" stroke="#22c55e" stroke-width="2.4" marker-end="url(#ag)"/>
+          <text x="150" y="142" font-size="9" fill="#22c55e" text-anchor="middle">locate &rarr; plan</text>
+        </svg>
+        <div class="legend">
+          <span><span class="dot" style="background:#ffc220"></span>target symbol</span>
+          <span><span class="dot" style="background:#22c55e"></span>def / refs / tests it returns</span>
+          <span><span class="dot" style="background:#2f3d63"></span>edge = call / reference</span>
+        </div>
+      </div>
+      <div>
+        <p class="lead">Index the repo once into a <b>symbol graph</b>: nodes are symbols (functions, types, constants); edges are the calls &amp; references between them.</p>
+        <p class="muted" style="margin-top:10px">The agent asks the graph a precise question and gets the <b>exact edit set</b> back &mdash; definition + every reference + the covering tests &mdash; with the code inline. No grep, no whole-file reads.</p>
+        <div class="flow">
+          <span class="chip k">locate</span><span class="arrow">&rarr;</span>
+          <span class="chip k">plan / trace / impact</span><span class="arrow">&rarr;</span>
+          <span class="chip">apply</span><span class="arrow">&rarr;</span>
+          <span class="chip">verify</span>
+        </div>
+        <p class="accent" style="margin-top:14px;font-weight:700">KG-only: no grep/read/shell &mdash; starving the slow path forces the cheap one.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3b: the toolbox -->
+  <section class="slide">
+    <div class="kicker">The toolbox</div>
+    <h2>What each graph query does</h2>
+    <div class="verbs">
+      <div class="verb"><h4>locate</h4><div class="io"><span class="in">concept / literal / name</span><span class="ar">&rarr;</span><span class="out">ranked symbols + file:line + confidence</span></div><p>"default date range" or a literal like <code>#07A093</code> &rarr; ranked candidate symbols with file:line. Turns a description into the thing to edit.</p></div>
+      <div class="verb"><h4>plan</h4><div class="io"><span class="in">a symbol</span><span class="ar">&rarr;</span><span class="out">edit set: def + refs + tests (code inline)</span></div><p>Returns the whole blast-scoped edit set: definition + references + covering tests + literal-assert sites, code shown inline. No reading needed.</p></div>
+      <div class="verb"><h4>trace</h4><div class="io"><span class="in">symbol + depth / concept</span><span class="ar">&rarr;</span><span class="out">reachable call chains</span></div><p>Follows calls/references <b>outward</b> from a symbol up to N hops &mdash; e.g. "does this widget reach the primary color constant?"</p></div>
+      <div class="verb"><h4>impact</h4><div class="io"><span class="in">a symbol</span><span class="ar">&rarr;</span><span class="out">blast radius: refs + tests</span></div><p>The reverse of trace: everyone that depends on a symbol &mdash; the blast radius before you change it.</p></div>
+      <div class="verb"><h4>apply_edit_at_site</h4><div class="io"><span class="in">file:line + new text</span><span class="ar">&rarr;</span><span class="out">atomic edit + PASS/FAIL</span></div><p>Edits by (file, line) &mdash; fetches its own context, applies atomically across all sites, and runs the affected tests in one shot.</p></div>
+      <div class="verb"><h4>verify</h4><div class="io"><span class="in">git diff (auto)</span><span class="ar">&rarr;</span><span class="out">one memoized PASS/FAIL</span></div><p>A single, memoized verdict over the whole working-tree diff. Called once at the end &mdash; unchanged green suites are skipped.</p></div>
+    </div>
+    <p class="muted" style="margin-top:14px">The graph DB is built once (<code>codegraph index</code>), self-heals after re-index, and <code>annotations.json</code> is the durable, git-committed team memory.</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide">
+    <div class="kicker">Before vs after</div>
+    <h2>Same change, two worlds</h2>
+    <div class="grid cols-2">
+      <div class="card bad">
+        <span class="tag red">Normal agent</span>
+        <ul>
+          <li>“Where is this? Let me grep…” × many</li>
+          <li>Reads 6 files fully to find 4 lines</li>
+          <li>Edits, guesses the test, re-runs the whole suite repeatedly</li>
+          <li><b>84 calls · 8.05M tokens · $4.39</b></li>
+        </ul>
+      </div>
+      <div class="card good">
+        <span class="tag green">CodeGraph (Sonnet, KG-only)</span>
+        <ul>
+          <li><code>locate</code> → strong match → <code>plan</code> returns the whole edit set</li>
+          <li><code>apply_edit_at_site</code> fetches its own context <b>and verifies</b></li>
+          <li>One verify at the end — memoized, cheap</li>
+          <li class="win">24 calls · 0.75M tokens · $0.86</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide">
+    <div class="kicker">The experiment</div>
+    <h2>A/B: model × tooling, identical task</h2>
+    <ul>
+      <li>One real, scoped change in a production front-end codebase (change a chart series color + line width, fix the broken tests).</li>
+      <li>Held constant: repo, task, success bar (<b>correct + tests green</b>).</li>
+      <li>Varied: <b>model</b> (Sonnet / Opus) × <b>tooling</b> (naive grep+read vs KG-only).</li>
+      <li>Measured: tool-calls, tokens, cached cost, wall-clock, turns.</li>
+    </ul>
+    <p class="muted" style="margin-top:14px">Every kept cell produced the same correct, green result — so the differences below are pure efficiency, not quality.</p>
+  </section>
+
+  <!-- 6: headline bars -->
+  <section class="slide">
+    <div class="kicker">The money slide</div>
+    <h2>Cost per task <span class="muted">(cached $, lower is better)</span></h2>
+    <div class="bars" id="costBars"></div>
+    <p class="muted" style="margin-top:14px">KG-only <b>Sonnet</b> is the cost winner — ~5× cheaper than its own naive baseline and ~4× cheaper than KG-only Opus.</p>
+  </section>
+
+  <!-- 7: tokens + calls -->
+  <section class="slide">
+    <div class="kicker">Why it's cheaper</div>
+    <h2>Tokens &amp; tool-calls collapse</h2>
+    <div class="grid cols-2">
+      <div class="card"><h3>Input tokens (millions)</h3><div class="bars" id="tokBars"></div></div>
+      <div class="card"><h3>Tool-calls per task</h3><div class="bars" id="callBars"></div></div>
+    </div>
+    <p class="muted" style="margin-top:14px">Fewer turns × smaller context = the compounding win. KG-only Sonnet: <b>~10× fewer tokens, 3.5× fewer calls</b> than naive Sonnet.</p>
+  </section>
+
+  <!-- 8: full table -->
+  <section class="slide">
+    <div class="kicker">The four cells</div>
+    <h2>Headline numbers</h2>
+    <table>
+      <thead><tr><th>Agent</th><th>Tool-calls</th><th>Tokens</th><th>Cost (cached)</th></tr></thead>
+      <tbody>
+        <tr><td>Sonnet · no KG</td><td>84</td><td>8.05M</td><td>$4.39</td></tr>
+        <tr><td>Opus · no KG</td><td>33</td><td>1.56M</td><td>$5.81</td></tr>
+        <tr class="hl"><td>Sonnet · KG-only</td><td>24</td><td>0.75M</td><td>$0.86</td></tr>
+        <tr><td>Opus · KG-only</td><td>18</td><td>0.49M</td><td>$3.43</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:16px"><b>Pick Sonnet KG-only to save money</b> (cost-optimal). <b>Pick Opus KG-only for the fewest turns</b> (18 calls) when latency matters more than cost.</p>
+  </section>
+
+  <!-- 9: KG-only not KG-preferred -->
+  <section class="slide">
+    <div class="kicker">The counter-intuitive bit</div>
+    <h2>KG-<i>preferred</i> does NOT work — it has to be KG-<i>only</i></h2>
+    <div class="grid cols-2">
+      <div class="card bad">
+        <span class="tag red">Give it grep as a fallback</span>
+        <p>Given the choice, the model reverts to reflex: <b>grep × 26 + read × 14</b>, ignores the graph, and lands right back on the ~84-call baseline.</p>
+      </div>
+      <div class="card good">
+        <span class="tag green">Take grep away</span>
+        <p>With <b>no</b> grep/read/shell, the only path is the graph. The <b>starvation is the mechanism</b>, not just a measurement trick.</p>
+      </div>
+    </div>
+    <p class="accent" style="margin-top:16px;font-weight:700">So the agents ship with grep/read/list/shell removed by design.</p>
+  </section>
+
+  <!-- 10: figures cost + calls -->
+  <section class="slide">
+    <div class="kicker">From the report</div>
+    <h2>Cost &amp; tool-calls by model × tooling</h2>
+    <div class="two-fig">
+      <figure><img src="figures/01-cost-per-task.png" alt="Cost per task"><figcaption>Fig 1 · Cost per task — Sonnet KG-only (green) is the cost-optimal cell</figcaption></figure>
+      <figure><img src="figures/04-toolcalls-per-task.png" alt="Tool-calls per task"><figcaption>Fig 2 · Tool-calls per task by model × tooling</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- 11: figures tuning + cache -->
+  <section class="slide">
+    <div class="kicker">From the report</div>
+    <h2>Tuning the loop &amp; where the tokens live</h2>
+    <div class="two-fig">
+      <figure><img src="figures/03-tuning-series-turns.png" alt="Tuning series"><figcaption>Fig 3 · Sonnet KG-only tuning series (green = best, red = regression)</figcaption></figure>
+      <figure><img src="figures/05-cache-composition.png" alt="Cache composition"><figcaption>Fig 4 · Token composition — cache-read vs cache-write vs fresh</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- 12: figures, task-tier study -->
+  <section class="slide">
+    <div class="kicker">From the report</div>
+    <h2>It's also faster</h2>
+    <div class="two-fig">
+      <figure><img src="figures/06-tier-median-time.png" alt="Median time"><figcaption>Fig 5 · Median completion time by task tier (the hardest tier censored at the 900s kill for the no-KG arm)</figcaption></figure>
+      <figure><img src="figures/07-tier-mean-turns.png" alt="Mean turns"><figcaption>Fig 6 · Mean turns by task tier — the cost driver (no-KG runs on the hardest tier were all killed)</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- 13: what it's great at -->
+  <section class="slide">
+    <div class="kicker">Fit</div>
+    <h2>What it's great at — and what it isn't</h2>
+    <div class="grid cols-2">
+      <div class="card good">
+        <span class="tag green">Great</span>
+        <ul>
+          <li>Scoped, symbol-level changes: rename, change a constant/color/value, tweak a function + fix the tests it breaks</li>
+          <li>Big, well-structured codebases where “where is this?” is the hard part</li>
+          <li>Fanning out the same small change to many call sites</li>
+        </ul>
+      </div>
+      <div class="card bad">
+        <span class="tag red">Weak spots</span>
+        <ul>
+          <li><b>JSX/prop wiring</b> the graph doesn't track — trace from the shared component's <i>config</i> symbol instead</li>
+          <li>Greenfield / brand-new files — nothing to discover yet</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14: how it works -->
+  <section class="slide">
+    <div class="kicker">Under the hood</div>
+    <h2>How it works</h2>
+    <ul>
+      <li><b>One shared MCP server</b>; each repo carries its own <code>codegraph-ext/</code> scripts + <code>.codegraph/</code> graph DB.</li>
+      <li>Repo auto-detected from your working dir — just send the task, no path needed.</li>
+      <li><code>apply_edit_at_site</code> <b>edits and verifies</b> in one shot; <code>verify</code> is a single memoized PASS/FAIL over the whole diff.</li>
+      <li>Self-healing DB; <code>annotations.json</code> is the durable, git-committed team memory.</li>
+      <li>Mechanical <b>turn-cutters</b>: budgets + a PASS-latch stop the agent the moment tests are green.</li>
+    </ul>
+  </section>
+
+  <!-- 15: hardened in the field -->
+  <section class="slide">
+    <div class="kicker">Battle-tested</div>
+    <h2>Hardened from real use</h2>
+    <div class="grid cols-3">
+      <div class="card"><h3>Fail-fast setup</h3><p class="muted">Missing scripts/DB → one actionable line, never a cryptic crash.</p></div>
+      <div class="card"><h3>Soft discovery</h3><p class="muted">A bad trace/read teaches the agent instead of killing the run.</p></div>
+      <div class="card"><h3>Orchestrator-only reset</h3><p class="muted">Agents can't zero their own budgets to escape a spiral.</p></div>
+      <div class="card"><h3>Untracked-safe latch</h3><p class="muted">Stray files no longer wedge the “task done” latch.</p></div>
+      <div class="card"><h3>Bare-path nudge</h3><p class="muted">Reads without a line range get pointed back to locate/plan.</p></div>
+      <div class="card"><h3><code>install.sh --check</code></h3><p class="muted">One command to confirm a repo is wired up correctly.</p></div>
+    </div>
+  </section>
+
+  <!-- 16: close -->
+  <section class="slide">
+    <div class="kicker">Takeaway</div>
+    <h1>Same result. <span class="accent">A tenth of the tokens.</span></h1>
+    <p class="lead">Starve the agent of grep, hand it a knowledge graph, and scoped changes get dramatically cheaper and faster — without giving up correctness.</p>
+    <div style="margin-top:1.2em">
+      <span class="pill">./install.sh &lt;repo&gt;</span>
+      <span class="pill">kg-sonnet — save money</span>
+      <span class="pill">kg-opus — fewest turns</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="bottom">
+  <span>Use <kbd>←</kbd> <kbd>→</kbd> or <kbd>Space</kbd> · <kbd>F</kbd> fullscreen</span>
+  <span id="counter">1 / 18</span>
+</div>
+
+<script>
+  // headline data
+  const D = [
+    {name:"Sonnet · no KG", calls:84, tok:8.05, cost:4.39, kg:false},
+    {name:"Opus · no KG",   calls:33, tok:1.56, cost:5.81, kg:false},
+    {name:"Sonnet · KG-only",calls:24, tok:0.75, cost:0.86, kg:true, win:true},
+    {name:"Opus · KG-only", calls:18, tok:0.49, cost:3.43, kg:true},
+  ];
+  function bars(el, key, fmt){
+    const max = Math.max(...D.map(d=>d[key]));
+    el.innerHTML = D.map(d=>{
+      const pct = Math.max(6, (d[key]/max)*100);
+      const col = d.win ? "linear-gradient(90deg,#16a34a,#22c55e)"
+                        : d.kg ? "linear-gradient(90deg,#2563eb,#60a5fa)"
+                               : "linear-gradient(90deg,#7c8aa5,#aab6cc)";
+      return `<div class="bar-row">
+        <div class="bar-lbl">${d.name}${d.win?' <span class="accent"></span>':''}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}">${fmt(d[key])}</div></div>
+        <div class="bar-val ${d.win?'win':''}">${fmt(d[key])}</div>
+      </div>`;
+    }).join("");
+  }
+  bars(document.getElementById("costBars"), "cost", v=>"$"+v.toFixed(2));
+  bars(document.getElementById("tokBars"),  "tok",  v=>v.toFixed(2)+"M");
+  bars(document.getElementById("callBars"), "calls",v=>v);
+
+  // deck nav
+  const slides=[...document.querySelectorAll(".slide")];
+  let i=0;
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle("active",k===i));
+    document.getElementById("counter").textContent=(i+1)+" / "+slides.length;
+    document.getElementById("progress").style.width=((i+1)/slides.length*100)+"%";
+  }
+  document.addEventListener("keydown",e=>{
+    if(["ArrowRight","ArrowDown"," ","PageDown"].includes(e.key)){e.preventDefault();show(i+1);}
+    else if(["ArrowLeft","ArrowUp","PageUp"].includes(e.key)){e.preventDefault();show(i-1);}
+    else if(e.key==="Home"){show(0);} else if(e.key==="End"){show(slides.length-1);}
+    else if(e.key.toLowerCase()==="f"){document.documentElement.requestFullscreen?.();}
+  });
+  document.getElementById("deck").addEventListener("click",e=>{
+    // click right half = next, left half = prev
+    show(e.clientX > window.innerWidth/2 ? i+1 : i-1);
+  });
+  show(0);
+</script>
+</body>
+</html>

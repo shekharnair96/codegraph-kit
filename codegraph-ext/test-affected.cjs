@@ -15,7 +15,6 @@
 const {
   inferChangedFromGit,
   resolveAffectedTests,
-  ensureXarcSetup,
   jestArgs,
   spawnSync,
   APP_ROOT,
@@ -55,7 +54,6 @@ if (dry) {
 }
 
 console.log(`\n[cg:test] running jest on ${testList.length} file(s)…\n`);
-ensureXarcSetup();
 const { args } = jestArgs(["--", ...testList]);
 const res = spawnSync("npx", args, { cwd: APP_ROOT, stdio: "inherit" });
 process.exit(res.status == null ? 1 : res.status);

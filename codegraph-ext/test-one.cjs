@@ -16,7 +16,6 @@
  */
 const {
   resolveAffectedTests,
-  ensureXarcSetup,
   jestArgs,
   spawnSync,
   APP_ROOT,
@@ -52,8 +51,6 @@ if (!testFiles || !testFiles.length) {
   console.log(`[cg:test-one] no test file resolved for '${target}'.`);
   process.exit(0);
 }
-
-ensureXarcSetup();
 const extra = ["--"];
 if (nameFilter) extra.unshift("-t", nameFilter);
 const { args } = jestArgs([...extra, ...testFiles]);

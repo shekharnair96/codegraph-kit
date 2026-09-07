@@ -3,8 +3,8 @@
 /**
  * codegraph-ext/affected.cjs — shared helpers for the edit-loop CLIs (cg:test, cg:verify).
  *
- * Keeps the change→covering-test mapping, the xarc dev bootstrap, and the jest invocation in ONE
- * place so cg:test and cg:verify can't drift. Pure library: no side effects on require.
+ * Keeps the change→covering-test mapping and the test-runner invocation in ONE place so cg:test
+ * and cg:verify can't drift. Pure library: no side effects on require.
  */
 const { execFileSync, spawnSync } = require("child_process");
 const fs = require("fs");
@@ -65,21 +65,22 @@ function resolveAffectedTests(changed) {
   return { mapping, testList: [...tests].filter(t => !t.startsWith("(")) };
 }
 
-// The Aurora jest config reads .etmp/xarc-options.json (created by `xrun setup-dev`). Without it the
-// config throws and jest silently falls back to broken defaults. Create it once if missing.
-function ensureXarcSetup() {
-  if (fs.existsSync(path.join(APP_ROOT, ".etmp", "xarc-options.json"))) return;
-  console.log("[cg] initializing xarc dev options (one-time `xrun setup-dev`)…");
-  const r = spawnSync("npx", ["xrun", "setup-dev"], { cwd: APP_ROOT, stdio: "ignore" });
-  if (r.status !== 0) console.log("[cg] warning: `xrun setup-dev` failed; jest may use defaults.");
+// Build the test-runner argv. Default is `npx jest <extra>`; a repo can override via
+// codegraph-ext/verify.config.json:  { "runner": ["jest", "--config", "jest.unit.config.js"] }
+// (the first element is the npx-resolved binary, the rest are fixed args placed before ours).
+const VERIFY_CONFIG = path.join(__dirname, "verify.config.json");
+function runnerConfig() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(VERIFY_CONFIG, "utf8"));
+    if (Array.isArray(cfg.runner) && cfg.runner.length) return cfg.runner.map(String);
+  } catch (_) {
+    /* no override */
+  }
+  return ["jest"];
 }
-
-// Build the jest argv that mirrors how the app runs tests (project config, coverage off).
 function jestArgs(extra = []) {
-  const useConfig = fs.existsSync(path.join(APP_ROOT, "jest.coverage.config.js"));
-  const args = ["jest"];
-  if (useConfig) args.push("--config", "jest.coverage.config.js", "--coverage=false");
-  return { args: args.concat(extra), useConfig };
+  const runner = runnerConfig();
+  return { args: runner.concat(extra), useConfig: runner.length > 1 };
 }
 
 // ---------- verify memoization ----------
@@ -150,8 +151,8 @@ module.exports = {
   isTest,
   inferChangedFromGit,
   resolveAffectedTests,
-  ensureXarcSetup,
   jestArgs,
+  runnerConfig,
   fingerprint,
   suiteFingerprint,
   coveredSources,

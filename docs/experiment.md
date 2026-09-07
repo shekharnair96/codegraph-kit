@@ -1,6 +1,6 @@
 # CodeGraph A/B Experiment — Cutting Agent Cost with a Knowledge Graph
 
-_A production TypeScript/React microapp · knowledge-graph-assisted coding agents · results + playbook_
+_A production TypeScript/React front-end codebase · knowledge-graph-assisted coding agents · results + playbook_
 
 ## TL;DR (for the room)
 
@@ -26,7 +26,7 @@ matching them on correctness.
 
 ## 1. The task (identical across all cells)
 
-> In the Item Sales widget, change the primary graph series color to `#FF6B6B` and set the line
+> In the sales chart widget, change the primary graph series color to `#FF6B6B` and set the line
 > width to `3px`. This affects the default/daily chart, the real-time ("Today") chart, and the
 > compare-mode chart. Do **not** touch the dashed comparison series. Fix any tests the change
 > breaks.
@@ -131,7 +131,7 @@ the cheaper model, Sonnet, wins decisively.)_
   reads the `STRONG MATCH` signal and edits immediately.
 - **Sonnet flails more without structure** — worst baseline (84 calls); it ignored `STRONG
   MATCH` and over-explored. **But** the KG closes that gap enough that its 5× lower price wins on cost.
-- **Correct scope can be *harder*.** The tight, correct edit (only `totalGMV`) triggered a
+- **Correct scope can be *harder*.** The tight, correct edit (only the primary metric) triggered a
   parameterized-invariant test that the *sloppy* all-metrics edit sidestepped. Good scoping isn't
   always the easy path — the tooling has to help with the test fallout, which is what verify
   hydration does.
@@ -268,16 +268,16 @@ privately; the numbers above are reproduced verbatim from those recordings._
 
 ## Figures
 
-![Cost per task](charts/01-cost-per-task.png)
+![Cost per task](figures/01-cost-per-task.png)
 
-![Naive baseline cost](charts/02-naive-baseline-cost.png)
+![Naive baseline cost](figures/02-naive-baseline-cost.png)
 
-![Tuning series — turns](charts/03-tuning-series-turns.png)
+![Tuning series — turns](figures/03-tuning-series-turns.png)
 
-![Tool-calls per task](charts/04-toolcalls-per-task.png)
+![Tool-calls per task](figures/04-toolcalls-per-task.png)
 
-![Cache composition](charts/05-cache-composition.png)
+![Cache composition](figures/05-cache-composition.png)
 
-![Median time (ambiguity vs blast radius)](charts/06-exp8-median-time.png)
+![Median time (ambiguity vs blast radius)](figures/06-tier-median-time.png)
 
-![Mean turns (ambiguity vs blast radius)](charts/07-exp8-mean-turns.png)
+![Mean turns (ambiguity vs blast radius)](figures/07-tier-mean-turns.png)
