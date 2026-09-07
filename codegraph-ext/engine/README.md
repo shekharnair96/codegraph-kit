@@ -14,7 +14,7 @@ node bin/codegraph.js query <name> [path]
 Those two dependencies are declared once, by the **kit's root `package.json`** — not here — so there
 is a single source of truth for their versions. Node resolves them upward from this directory, which
 works whether they landed in the kit's own `node_modules` (git clone) or in the consumer's
-(`npm i codegraph-mcp`). `install.sh` installs them once and calls the binary by absolute path, so
+(`npm i codegraph-kit`). `install.sh` installs them once and calls the binary by absolute path, so
 nothing needs to be on `PATH`.
 
 ## What it extracts

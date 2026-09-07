@@ -1,4 +1,4 @@
-# codegraph-mcp — a standalone code knowledge-graph MCP server and KG-only coding agents
+# codegraph-kit — a standalone code knowledge-graph MCP server and KG-only coding agents
 
 Point the **CodeGraph** MCP server at any TypeScript/JavaScript repo, then hand scoped changes
 to one of two **KG-only** coding agents. The agents discover code *only* through the knowledge
@@ -149,8 +149,8 @@ just skips the props/docs/test-linkage/annotation overlays. Core discovery
 From npm:
 
 ```bash
-npm install codegraph-mcp
-# then: node_modules/codegraph-mcp/install.sh /abs/path/to/repo-or-subdir
+npm install codegraph-kit
+# then: node_modules/codegraph-kit/install.sh /abs/path/to/repo-or-subdir
 ```
 
 or from a clone:
