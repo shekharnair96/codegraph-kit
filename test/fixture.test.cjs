@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const KIT = path.join(__dirname, "..");
-const FIXTURE = path.join(__dirname, "fixture");
+const FIXTURE = path.join(__dirname, "..", "test-fixture");
 const CG_BIN = path.join(KIT, "codegraph-ext", "engine", "bin", "codegraph.js");
 
 const run = (args, opts = {}) =>
@@ -50,7 +50,7 @@ test("fixture indexes, augments and answers locate/trace/plan", { timeout: 12000
     body.signal,
     "SIGTERM",
     "build-body-index did not finish within 60s — the body tokenizer is backtracking " +
-      "(see test/fixture/src/utils/pathological.ts)"
+      "(see test-fixture/src/utils/pathological.ts)"
   );
   assert.strictEqual(body.status, 0, `build-body-index failed:\n${body.stdout}\n${body.stderr}`);
 

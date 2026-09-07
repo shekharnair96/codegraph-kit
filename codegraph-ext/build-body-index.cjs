@@ -85,7 +85,7 @@ function tokensForSpan(fileRel, startLine, endLine) {
   // catastrophically on a body that mixes all three quote characters inside one
   // escape-dense literal — a single ~450-byte RFC-5322 email regex was enough to hang
   // the run for 20+ CPU minutes. Repo size is irrelevant; one span does it.
-  // Pinned as test/fixture/src/utils/pathological.ts.
+  // Pinned as test-fixture/src/utils/pathological.ts.
   const strLit = /"(?:[^"\\\n]|\\.){2,200}"|'(?:[^'\\\n]|\\.){2,200}'|`(?:[^`\\]|\\.){2,200}`/g;
   (body.match(strLit) || []).forEach(s => {
     s.slice(1, -1)

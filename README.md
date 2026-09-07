@@ -75,7 +75,8 @@ codegraph-kit/
     kg-sonnet.json      Code Puppy rendering, Sonnet (cost-optimal default choice)
     kg-opus.json        Code Puppy rendering, Opus (fewest turns, ~4× cost)
   install/              host adapters (Claude Code, OpenCode, Code Puppy, Cursor, Codex CLI)
-  test/                 a small TS/TSX/JS fixture project + the end-to-end tests (`npm test`)
+  test/                 the end-to-end tests (`npm test`)
+  test-fixture/         a small TS/TSX/JS project the tests index and query
   docs/                 deck + experiment figures
   install.sh            point everything at a repo (idempotent)
   README.md
@@ -220,7 +221,13 @@ graph can pinpoint the edit set.
 npm test
 ```
 
-from the repo root. `test/fixture.test.cjs` copies `test/fixture/` to a temp dir, indexes it, builds
+from the repo root — `npm test` names the two files explicitly, which is the only form that works.
+Bare `node --test` and `node --test test/` both misfire: Node ≥ 22 treats positional arguments as
+glob patterns (a bare directory matches nothing and is then loaded as a module), and Node's default
+discovery claims every `test-*.cjs` in the tree — which here means the `test-one` / `test-affected`
+CLI scripts, not tests.
+
+`test/fixture.test.cjs` copies `test-fixture/` to a temp dir, indexes it, builds
 the overlays, and asserts the graph shape plus `locate`/`trace`/`plan` output end to end.
 `test/hosts.test.cjs` runs `install.sh` against a temp repo with `HOME`/`CODEX_HOME` redirected to a
 temp dir and asserts every host config parses, that the Claude subagent allowlist really does grant

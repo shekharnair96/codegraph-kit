@@ -13,7 +13,7 @@ const path = require("node:path");
 const { spawnSync, spawn } = require("node:child_process");
 
 const KIT = path.join(__dirname, "..");
-const FIXTURE = path.join(__dirname, "fixture");
+const FIXTURE = path.join(__dirname, "..", "test-fixture");
 const INSTALL = path.join(KIT, "install.sh");
 const HOSTS = "claude,cursor,codex,opencode,puppy,none";
 
