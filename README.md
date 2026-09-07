@@ -98,14 +98,24 @@ The thesis of this kit is **starvation**: the agent gets no grep, no read, no sh
 use the graph. Hosts that can express a tool allowlist get that enforced; the rest get the MCP
 server plus a prompt file that only *asks* for it.
 
-| Host | What gets installed | KG-only enforced? |
-|---|---|---|
-| **Claude Code** | project `.mcp.json` + `.claude/agents/kg-{sonnet,opus}.md` subagents whose `tools:` list is exactly the `codegraph_*` MCP tools + `Edit, Write, MultiEdit` | **yes** |
-| **OpenCode** | `opencode.json` → `mcp.codegraph` + `agent.kg-{sonnet,opus}` with `tools` disabling bash/read/grep/glob/list/webfetch | **yes** |
-| **Code Puppy** | `~/.code_puppy/{mcp_servers,mcp_agent_bindings}.json` + `agents/kg-{sonnet,opus}.json` | **yes** |
-| **Cursor** | `.cursor/mcp.json` + `.cursor/rules/codegraph-kg-only.mdc` | no — rules can't restrict tools |
-| **Codex CLI** | `$CODEX_HOME/config.toml` `[mcp_servers.codegraph]` + an `AGENTS.md` section | no — no tool allowlist |
-| **anything else** | prints the stdio command, an `mcpServers` JSON snippet and the prompt path | you wire it |
+| Host | What gets installed | KG-only enforced? | Verified end to end |
+|---|---|---|---|
+| **Claude Code** | project `.mcp.json` + `.claude/agents/kg-{sonnet,opus}.md` subagents whose `tools:` list is exactly the `codegraph_*` MCP tools + `Edit, Write, MultiEdit` | **yes** | **yes** — needs `--strict-mcp-config` headless, or one-time approval interactively |
+| **OpenCode** | `opencode.json` → `mcp.codegraph` + `agent.kg-{sonnet,opus}` with `tools` disabling bash/read/grep/glob/list/webfetch | **yes** | **yes** — no approval step |
+| **Codex CLI** | `$CODEX_HOME/config.toml` `[mcp_servers.codegraph]` + an `AGENTS.md` section | no — no tool allowlist | **yes** — requires `codex exec --approve-for-me` (see below) |
+| **Code Puppy** | `~/.code_puppy/{mcp_servers,mcp_agent_bindings}.json` + `agents/kg-{sonnet,opus}.json` | **yes** | config only — not yet run against a live model |
+| **Cursor** | `.cursor/mcp.json` + `.cursor/rules/codegraph-kg-only.mdc` | no — rules can't restrict tools | config only — not yet run against a live model |
+| **anything else** | prints the stdio command, an `mcpServers` JSON snippet and the prompt path | you wire it | — |
+
+"Verified end to end" means: the host actually spawned the server *and* the model called a
+`codegraph_*` tool and got the right answer back. Every adapter's configured command is checked in
+CI (`test/hosts.test.cjs` spawns it and asserts `tools/list` returns all 10 tools), so "config only"
+means the server launches and handshakes — just that no live model run has confirmed the rest.
+
+**Codex CLI needs `--approve-for-me`.** Any other headless mode leaves approval policy at `never`,
+which *denies* MCP tool calls rather than auto-allowing them — you get `MCP tool call requires
+approval, but approval policy is never` and the model answers from nothing. Marking the server
+`trust_level = "trusted"` does not help; the gate is session-level, not per-server.
 
 On Cursor and Codex CLI expect the model to grep anyway — that's the KG-*preferred* arm, which this
 kit measured and found reverts to the non-KG baseline. Use them for the graph tooling, not for the
