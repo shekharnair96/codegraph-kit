@@ -48,7 +48,7 @@ done
 
 command -v node >/dev/null 2>&1 || { echo "ERROR: node not found (>= 18 required)."; exit 1; }
 # --- the indexer writes the graph through the sqlite3 command-line tool ---
-command -v sqlite3 >/dev/null 2>&1 || { echo "ERROR: sqlite3 CLI not found (needed to build the graph DB)."; exit 1; }
+node -e "require('$KIT/codegraph-ext/sqlite-bin.cjs').sqliteBin()" || exit 1
 
 if [ -z "$TARGET" ]; then
   echo "Usage: ./install.sh /abs/path/to/repo-or-subdir [--host claude,opencode,...]"; exit 1

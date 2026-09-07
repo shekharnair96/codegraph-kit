@@ -7,6 +7,7 @@
  * and cg:verify can't drift. Pure library: no side effects on require.
  */
 const { execFileSync, spawnSync } = require("child_process");
+const { sqliteBin } = require("./sqlite-bin.cjs");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -18,7 +19,7 @@ const esc = s => String(s).replace(/'/g, "''");
 const toRel = f => path.relative(APP_ROOT, path.resolve(APP_ROOT, f)).split(path.sep).join("/");
 
 function q(sql) {
-  const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const out = execFileSync(sqliteBin(), ["-json", DB, sql], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : [];
 }
 

@@ -21,6 +21,7 @@
  * codegraph's native CLI does not know these custom edge kinds, so we query the SQLite directly.
  */
 const { execFileSync } = require("child_process");
+const { sqliteBin } = require("./sqlite-bin.cjs");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -31,7 +32,7 @@ const AUGMENT = path.join(__dirname, "augment.cjs");
 const ANNOTATIONS_FILE = path.join(__dirname, "annotations.json");
 const esc = s => String(s).replace(/'/g, "''");
 const q = sql => {
-  const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
+  const out = execFileSync(sqliteBin(), ["-json", DB, sql], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : [];
 };
 // Paths printed by plan/impact/locate/read are meant to be fed straight back into codegraph_read /

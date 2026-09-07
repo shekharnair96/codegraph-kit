@@ -18,6 +18,7 @@
  * callers can detect staleness (node count changed).
  */
 const { execFileSync } = require("child_process");
+const { sqliteBin } = require("./sqlite-bin.cjs");
 const fs = require("fs");
 const path = require("path");
 
@@ -30,12 +31,12 @@ if (!fs.existsSync(DB)) {
 }
 
 function query(sql) {
-  const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const out = execFileSync(sqliteBin(), ["-json", DB, sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : [];
 }
 function runScript(statements) {
   const script = "PRAGMA foreign_keys=OFF;\nBEGIN;\n" + statements.join("\n") + "\nCOMMIT;\n";
-  execFileSync("sqlite3", [DB], { input: script, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  execFileSync(sqliteBin(), [DB], { input: script, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 }
 const esc = s => String(s == null ? "" : s).replace(/'/g, "''");
 

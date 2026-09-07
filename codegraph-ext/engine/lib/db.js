@@ -4,27 +4,29 @@
  * engine has no native module to compile. Statements are streamed on stdin inside one transaction.
  */
 const { execFileSync, spawnSync } = require("child_process");
+const { sqliteBin } = require("./sqlite-bin");
 const fs = require("fs");
 const path = require("path");
 
 const SCHEMA = path.join(__dirname, "schema.sql");
 
 function hasSqlite() {
-  const r = spawnSync("sqlite3", ["-version"], { encoding: "utf8" });
-  return r.status === 0;
+  // sqliteBin() throws a descriptive error (missing vs. built-without-FTS5); surface it as-is.
+  sqliteBin();
+  return true;
 }
 
 const esc = s => String(s).replace(/'/g, "''");
 const lit = v => (v === null || v === undefined ? "NULL" : typeof v === "number" ? String(v) : `'${esc(v)}'`);
 
 function run(dbPath, script) {
-  const r = spawnSync("sqlite3", ["-bail", dbPath], { input: script, encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 });
+  const r = spawnSync(sqliteBin(), ["-bail", dbPath], { input: script, encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`sqlite3 failed: ${(r.stderr || "").trim().slice(0, 500)}`);
   return r.stdout;
 }
 
 function query(dbPath, sql) {
-  const out = execFileSync("sqlite3", ["-json", dbPath, sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const out = execFileSync(sqliteBin(), ["-json", dbPath, sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : [];
 }
 

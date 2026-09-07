@@ -19,8 +19,14 @@ jobs:
         with:
           node-version: 20
 
+      - name: Ensure sqlite3 with FTS5 (macOS stock build lacks it)
+        if: runner.os == 'macOS'
+        run: |
+          brew list sqlite >/dev/null 2>&1 || brew install --quiet sqlite
+          echo "$(brew --prefix sqlite)/bin" >> "$GITHUB_PATH"
+
       - name: Check sqlite3 CLI is available
-        run: sqlite3 --version
+        run: sqlite3 --version && sqlite3 :memory: "CREATE VIRTUAL TABLE t USING fts5(x);"
 
       - name: Install engine dependencies
         run: npm install --prefix codegraph-ext/engine

@@ -17,6 +17,7 @@
  * annotations.json, never the DB.
  */
 const { execFileSync } = require("child_process");
+const { sqliteBin } = require("./sqlite-bin.cjs");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -38,7 +39,7 @@ function requireTsMorph() {
   if (m) return m;
   try {
     const dbPath = path.join(__dirname, "..", ".codegraph", "codegraph.db");
-    const out = execFileSync("sqlite3", ["-json", dbPath, "SELECT value FROM project_metadata WHERE key='engine_dir';"], { encoding: "utf8" });
+    const out = execFileSync(sqliteBin(), ["-json", dbPath, "SELECT value FROM project_metadata WHERE key='engine_dir';"], { encoding: "utf8" });
     const engineDir = out.trim() ? JSON.parse(out)[0].value : null;
     if (engineDir) {
       m = attempt(path.join(engineDir, "node_modules", "ts-morph"));
@@ -78,12 +79,12 @@ if (!fs.existsSync(DB)) {
 
 // ---------- sqlite helpers ----------
 function query(q) {
-  const out = execFileSync("sqlite3", ["-json", DB, q], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const out = execFileSync(sqliteBin(), ["-json", DB, q], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : [];
 }
 function runScript(statements) {
   const script = "PRAGMA foreign_keys=OFF;\nBEGIN;\n" + statements.join("\n") + "\nCOMMIT;\n";
-  execFileSync("sqlite3", [DB], { input: script, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  execFileSync(sqliteBin(), [DB], { input: script, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 }
 const esc = s => String(s == null ? "" : s).replace(/'/g, "''");
 const toRel = abs => path.relative(APP_ROOT, abs).split(path.sep).join("/");

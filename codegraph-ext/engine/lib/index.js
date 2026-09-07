@@ -12,7 +12,7 @@ const pkg = require("../package.json");
 
 function indexProject(root, opts = {}) {
   const log = opts.quiet ? () => {} : msg => process.stderr.write(`[codegraph] ${msg}\n`);
-  if (!db.hasSqlite()) throw new Error("the `sqlite3` command-line tool is required (brew install sqlite / apt install sqlite3).");
+  db.hasSqlite(); // throws with a descriptive message if no usable (FTS5-capable) sqlite3 exists
   if (!config.isInitialized(root)) config.init(root);
   const cfg = config.load(root);
   const t0 = Date.now();
