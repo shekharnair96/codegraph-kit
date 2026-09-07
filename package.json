@@ -1,6 +1,6 @@
 {
   "name": "codegraph-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Standalone code knowledge-graph MCP server for TypeScript/JavaScript repos: a built-in indexer, a symbol-aware edit loop as first-class agent tools, and KG-only coding agents for Claude Code, OpenCode, Cursor, Codex CLI and Code Puppy.",
   "keywords": [
