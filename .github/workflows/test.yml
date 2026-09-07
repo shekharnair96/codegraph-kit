@@ -26,4 +26,10 @@ jobs:
         run: npm install --prefix codegraph-ext/engine
 
       - name: Run tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
+
+      - name: Surface failure output as annotation
+        if: failure()
+        run: node -e 'const s=require("fs").readFileSync("test.log","utf8");const t=s.slice(-3000).replace(/%/g,"%25").replace(/\r/g,"%0D").replace(/\n/g,"%0A");console.log("::error::"+t)'
