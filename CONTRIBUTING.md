@@ -9,9 +9,12 @@ graph-accuracy fixes are very welcome.
 ```bash
 git clone https://github.com/shekharnair96/codegraph-kit.git
 cd codegraph-kit && npm install
-npm install --prefix codegraph-ext/engine   # the indexer's own deps (ts-morph, typescript)
 npm test
 ```
+
+One `npm install` at the root is enough. The indexer under `codegraph-ext/engine/` has no
+`package.json` dependencies of its own — it resolves `typescript` and `ts-morph` upward out of the
+root `node_modules`, so installing inside that directory does nothing.
 
 You need a `sqlite3` CLI **built with FTS5**. The stock macOS binary is not — `brew install sqlite`
 and put `$(brew --prefix sqlite)/bin` ahead of it on your `PATH`. To check:

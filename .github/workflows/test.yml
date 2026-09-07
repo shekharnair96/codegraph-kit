@@ -30,8 +30,12 @@ jobs:
           sqlite3 --version
           sqlite3 :memory: "CREATE VIRTUAL TABLE t USING fts5(x);"
 
-      - name: Install engine dependencies
-        run: npm install --prefix codegraph-ext/engine
+      # The indexer has no package.json deps of its own: codegraph-ext/engine/lib resolves
+      # typescript and ts-morph upward, out of the root node_modules. Installing with
+      # --prefix codegraph-ext/engine therefore installs nothing and the indexer fails at
+      # require('typescript'). Install at the root.
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run tests
         run: |
