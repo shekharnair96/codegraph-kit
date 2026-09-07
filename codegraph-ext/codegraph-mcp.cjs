@@ -868,4 +868,5 @@ process.stdin.on("data", chunk => {
     }
   }
 });
-process.stdin.on("end", () => process.exit(0));
+// exit only after queued replies flush — process.exit() truncates piped stdout (seen on Node 20)
+process.stdin.on("end", () => process.stdout.write("", () => process.exit(0)));
