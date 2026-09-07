@@ -10,7 +10,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawnSync, spawn } = require("node:child_process");
 
 const KIT = path.join(__dirname, "..");
 const FIXTURE = path.join(__dirname, "fixture");
@@ -18,6 +18,58 @@ const INSTALL = path.join(KIT, "install.sh");
 const HOSTS = "claude,cursor,codex,opencode,puppy,none";
 
 const readJson = (f) => JSON.parse(fs.readFileSync(f, "utf8"));
+
+/* Spawn a stdio MCP server the way a host would and drive the opening handshake:
+ * initialize -> notifications/initialized -> tools/list. Resolves to the tool names. */
+function handshake(cmd, args, cwd, env) {
+  return new Promise((resolve) => {
+    const p = spawn(cmd, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    let buf = "";
+    let err = "";
+    let done = false;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      try { p.kill(); } catch (_) { /* already gone */ }
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish({ ok: false, why: `no tools/list reply within 20s; stderr: ${err}` }), 20000);
+    p.on("error", (e) => { clearTimeout(timer); finish({ ok: false, why: `spawn failed: ${e.message}` }); });
+    // A server that dies before answering is a failure we can report at once, rather than
+    // waiting out the timeout.
+    p.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      finish({ ok: false, why: `server exited (code=${code}, signal=${signal}) before tools/list; stderr: ${err}` });
+    });
+    p.stderr.on("data", (d) => { err += d; });
+    p.stdout.on("data", (d) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch (_) { continue; } // servers may log non-JSON noise
+        if (msg.id === 1) {
+          p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+          p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) + "\n");
+        } else if (msg.id === 2) {
+          clearTimeout(timer);
+          finish({ ok: true, tools: ((msg.result || {}).tools || []).map((t) => t.name) });
+        }
+      }
+    });
+    p.stdin.write(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "codegraph-kit-test", version: "0" } },
+      }) + "\n"
+    );
+  });
+}
 
 // Every file the six adapters are expected to produce, relative to the temp target / temp home.
 const targetFiles = [
@@ -239,4 +291,82 @@ test("claude mcp list sees the project's codegraph server", { timeout: 120000 },
     return t.skip(`claude mcp list unusable here (exit=${r.status}): ${out.trim().slice(0, 500)}`);
   }
   assert.match(out, /codegraph/, "claude mcp list does not mention the codegraph server");
+});
+
+/* Every adapter writes a `node <abs path>/codegraph-mcp.cjs` command somewhere. The shape tests
+ * above prove the config LOOKS right; this one proves the command in it actually runs — the file
+ * resolves, the process starts, and it answers the MCP opening handshake with all ten tools.
+ *
+ * Note the deliberate split this pins down: the project-scoped adapters (claude, cursor, opencode)
+ * point at the copy inside the target repo, while the global ones (codex, puppy) point at the kit
+ * checkout, because one global config has to serve every repo. Moving the kit therefore breaks
+ * codex/puppy and leaves the other three working.
+ *
+ * This still does NOT prove any host reads the file — only that what we wrote into it is runnable. */
+test("every host's configured server command actually starts and lists the tools", { timeout: 180000 }, async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codegraph-launch-"));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const target = path.join(tmp, "repo");
+  const home = path.join(tmp, "home");
+  fs.mkdirSync(home, { recursive: true });
+  fs.cpSync(FIXTURE, target, { recursive: true });
+
+  const env = { ...process.env, HOME: home, CODEX_HOME: path.join(home, ".codex") };
+  const inst = spawnSync("bash", [INSTALL, target, "--host", HOSTS], {
+    encoding: "utf8",
+    env,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  assert.strictEqual(inst.status, 0, `install.sh failed:\n${inst.stdout}\n${inst.stderr}`);
+
+  // Pull [command, args] out of each config exactly the way that host's own loader would.
+  const firstServer = (obj) => obj[Object.keys(obj)[0]];
+  const commands = {
+    claude: () => {
+      const s = firstServer(readJson(path.join(target, ".mcp.json")).mcpServers);
+      return [s.command, s.args || []];
+    },
+    cursor: () => {
+      const s = firstServer(readJson(path.join(target, ".cursor", "mcp.json")).mcpServers);
+      return [s.command, s.args || []];
+    },
+    opencode: () => {
+      const c = firstServer(readJson(path.join(target, "opencode.json")).mcp).command;
+      return [c[0], c.slice(1)];
+    },
+    codex: () => {
+      const section = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8").split(/^\[mcp_servers\./m)[1];
+      const cmd = /^command\s*=\s*"([^"]+)"/m.exec(section);
+      const args = /^args\s*=\s*\[([^\]]*)\]/m.exec(section);
+      assert.ok(cmd && args, "codex config.toml has no command/args under [mcp_servers.*]");
+      return [cmd[1], [...args[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])];
+    },
+    puppy: () => {
+      const j = readJson(path.join(home, ".code_puppy", "mcp_servers.json"));
+      const s = firstServer(j.mcp_servers || j.mcpServers);
+      return [s.command, s.args || []];
+    },
+  };
+
+  for (const host of Object.keys(commands)) {
+    const [cmd, args] = commands[host]();
+    const serverPath = args[args.length - 1];
+    assert.match(serverPath, /codegraph-mcp\.cjs$/, `${host}: last arg is not the MCP server`);
+    assert.ok(path.isAbsolute(serverPath), `${host}: server path must be absolute, got ${serverPath}`);
+    assert.ok(fs.existsSync(serverPath), `${host}: configured server does not exist at ${serverPath}`);
+
+    const r = await handshake(cmd, args, target, env);
+    assert.ok(r.ok, `${host}: MCP handshake failed — ${r.why}`);
+    assert.strictEqual(
+      r.tools.length,
+      10,
+      `${host}: expected 10 codegraph tools, got ${r.tools.length}: ${r.tools.join(", ")}`
+    );
+    assert.ok(r.tools.includes("codegraph_locate"), `${host}: tools/list has no codegraph_locate`);
+    assert.ok(
+      r.tools.includes("codegraph_apply_edit_at_site"),
+      `${host}: tools/list has no codegraph_apply_edit_at_site`
+    );
+  }
 });
