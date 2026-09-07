@@ -24,6 +24,13 @@ Full write-up: [`docs/experiment.md`](docs/experiment.md) (also rendered as
 [`docs/report.html`](docs/report.html)), the slide deck [`docs/deck.html`](docs/deck.html), charts in
 [`docs/figures/`](docs/figures/), and the design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+Those are relative A/B claims from the private experiment behind this kit. For a small
+reproducible **public** demo, see [`demo/README.md`](demo/README.md): four headless runs on
+[react-hot-toast](https://github.com/timolins/react-hot-toast), two tasks (a multi-site default
+change, and a rename with a substring trap), kg-sonnet vs. a plain agent, with prompts, diffs and
+per-run summaries. Honestly reported: on the rename the KG agent used ~40% fewer turns and cost;
+on the value change the baseline was slightly cheaper.
+
 ## The tools
 
 Each MCP tool shells out to a small, single-purpose `.cjs` CLI under [`codegraph-ext/`](codegraph-ext/),

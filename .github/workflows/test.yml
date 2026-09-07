@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check sqlite3 CLI is available
+        run: sqlite3 --version
+
+      - name: Install engine dependencies
+        run: npm install --prefix codegraph-ext/engine
+
+      - name: Run tests
+        run: npm test
