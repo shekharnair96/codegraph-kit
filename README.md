@@ -4,39 +4,100 @@
 [![npm](https://img.shields.io/npm/v/codegraph-kit.svg)](https://www.npmjs.com/package/codegraph-kit)
 [![license](https://img.shields.io/npm/l/codegraph-kit.svg)](LICENSE)
 
-Point the **CodeGraph** MCP server at any TypeScript/JavaScript repo, then hand scoped changes
-to one of two **KG-only** coding agents. The agents discover code *only* through the knowledge
-graph — no grep, no file listing, no shell — which is exactly what makes them cheap and fast.
+Point the **CodeGraph** MCP server at any TypeScript/JavaScript repo, then hand scoped changes to
+one of two **KG-only** coding agents. The agents discover code *only* through the knowledge graph —
+no grep, no file listing, no shell. That restriction is the whole idea, and it is enforced by the
+host's tool allowlist rather than requested in a prompt.
 
-## Why KG-only (the short version)
+## What that buys you
 
-We A/B'd the same scoped task (change a chart's series color + line width, fix the broken
-tests) across model × tooling — same repo, same task, correct and tests green in every kept
-cell. KG-only Sonnet used ~3.5× fewer tool calls, ~10× fewer tokens and was ~5× cheaper than
-the same model with grep/read; KG-only Opus used the fewest turns but cost ~4× KG-only Sonnet.
+Two scoped tasks on [react-hook-form](https://github.com/react-hook-form/react-hook-form) (v7.87.0,
+120 jest suites, 1,302 tests), run headless through Claude Code on a clean tree, suite verified green
+afterwards. Same prompt both arms; `kg-sonnet` is this kit's agent, `baseline` is plain Sonnet with
+Read/Grep/Glob/Edit and jest via Bash:
 
-Takeaways:
-- **KG-only Sonnet is the cost winner** — cheapest correct-and-green cell in the grid.
-- **KG-only Opus is the fewest-turns winner** — but you pay ~4× for it.
-- **KG-*preferred* (grep/read as a fallback) does NOT work**: given the choice, the model greps
-  and reads and ignores the graph, reverting to the non-KG baseline. The **starvation** is the
-  mechanism, not just a measurement trick. So: **KG-only.**
-- **The graph pays off on ambiguous change-location tasks**; on trivial or wide-mechanical edits
-  both arms succeed and the graph is overhead.
+| run | suite after | turns | cost (USD) | input tokens |
+|---|---|---|---|---|
+| **A** add a prototype-pollution guard — `kg-sonnet` | PASS 1302/1302 | **9** | **0.12** | **65k** |
+| **A** baseline | PASS 1302/1302 | 11 | 0.27 | 217k |
+| **B** rename with a substring trap — `kg-sonnet` | PASS 1302/1302 | 18 | **0.13** | **64k** |
+| **B** baseline | PASS 1302/1302 | 18 | 0.22 | 354k |
 
-Full write-up: [`docs/experiment.md`](docs/experiment.md) (also rendered as
-[`docs/report.html`](docs/report.html)), the slide deck [`docs/deck.html`](docs/deck.html), charts in
-[`docs/figures/`](docs/figures/), and the design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The gap that matters is the input-token column, and it comes from `plan`/`impact`/`read` returning
+exactly the relevant sites instead of whole files and grep sweeps. It widens with repo size: on a
+28-file repo the same comparison is roughly a wash, and on one task the baseline was *cheaper*.
 
-Those are relative A/B claims from the private experiment behind this kit. For reproducible
-**public** demos, see [`demo/README.md`](demo/README.md): eight headless runs across
-[react-hot-toast](https://github.com/timolins/react-hot-toast) (28 files, 13 tests) and
-[react-hook-form](https://github.com/react-hook-form/react-hook-form) (~6,000 graph nodes, 1,302
-tests), kg-sonnet vs. a plain agent on four tasks, with prompts, diffs and per-run summaries.
-Honestly reported: on renames the KG agent used ~40% fewer turns and cost; on a small value change
-in the tiny repo the baseline was slightly cheaper. The size effect is the interesting one — on
-react-hook-form the KG agent ran on **~65k input tokens per task vs the baseline's 217–354k**, at
-roughly half the cost, with every suite green.
+Reproduce it yourself — prompts, diffs, per-run tool breakdowns and the exact commands are in
+[`demo/README.md`](demo/README.md) (eight runs, two public repos, one sample per cell, not a
+benchmark). The honest version of the story is there too, including the run where the KG agent
+burned 11 failed `Edit` attempts before recovering.
+
+## How this differs from other code-indexing MCP servers
+
+Most of them stop at discovery: they index a repo and expose search or symbol lookup, and the agent
+does the editing with its ordinary file tools. This kit is built around the other half of the loop.
+
+- **Editing and verification are first-class graph tools.** `apply_edit_at_site` edits by
+  `(file, line)` — no whole-file read to build an anchor — batched and atomic; `apply_literal`
+  scopes a value swap to one symbol's span so changing one metric's color can't leak into siblings;
+  `verify` returns a single PASS/FAIL over the affected tests for the whole diff, memoized.
+- **The restriction is enforced, not suggested.** The kit ships agent definitions whose tool
+  allowlist contains the `codegraph_*` tools and nothing else. On hosts that support it
+  (Claude Code, OpenCode, Code Puppy) the model *cannot* grep — see the support table below for
+  which hosts can and can't.
+- **It's self-contained.** The indexer is included, the server has zero runtime dependencies, and
+  there's no service to run, no CLI to download, and no build step.
+
+The enforcement point is not a detail. **KG-*preferred* — the graph available with grep and read as
+a fallback — does not work.** Given the choice, the model greps, reads, ignores the graph, and the
+numbers revert to the baseline. That negative result is why the agents are configured the way they
+are.
+
+## Quick start
+
+```bash
+npm install codegraph-kit
+node_modules/codegraph-kit/install.sh /abs/path/to/your/repo
+```
+
+That indexes the repo and wires up whichever MCP host you have (Claude Code, OpenCode, Cursor,
+Codex CLI, Code Puppy — auto-detected). Then, from inside that repo:
+
+```
+Use the kg-sonnet subagent to rename getFieldValue to readFieldValue everywhere.
+Fix any tests this breaks. Leave getFieldValueAs alone.
+```
+
+You need Node ≥ 18 and a `sqlite3` on your PATH. Full details in
+[Requirements](#requirements) and [Install](#install-once-per-repo) below.
+
+## The experiment behind it
+
+Before the public demos above, the same comparison ran as a controlled A/B on a private repo across
+model × tooling, correct and tests green in every kept cell. The headline: KG-only Sonnet was the
+cheapest correct cell in the grid, using ~3.5× fewer tool calls and ~10× fewer tokens than the same
+model with grep/read; KG-only Opus took the fewest turns but cost ~4× that.
+
+The more useful finding is about *when* the graph helps. At **n=5 per cell** across three task
+tiers, the two arms separate in different ways:
+
+- **Ambiguous change-location** — the only tier where the plain agent fails outright, and it fails by
+  *never converging*: 0/5 within a 900s kill, vs 4/5 correct with the graph (Fisher p=0.048).
+- **Wide-mechanical** — both arms get it right 5/5. The graph buys cost and consistency, not
+  correctness: **$0.23 vs $0.80**, and exactly 7 turns on every single run vs 18–58
+  (Mann-Whitney on turns, p=0.0079).
+- **Trivial one-constant edits** — a genuine null, and at this sample size not certifiable either
+  way. A plain agent is fine.
+
+The mechanism is the interesting part, and it revises the obvious intuition: the payoff tracks
+**scope ambiguity, not blast radius**. The widest-fan-out tier is the one the plain agent handles
+fine.
+
+Those are small samples on one repo, and the underlying data isn't public — treat them as the
+motivation for the design, and the reproducible demo above as the evidence. Full write-up:
+[`docs/experiment.md`](docs/experiment.md) (rendered as [`docs/report.html`](docs/report.html)),
+slide deck [`docs/deck.html`](docs/deck.html), charts in [`docs/figures/`](docs/figures/), design
+notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## The tools
 
@@ -242,15 +303,19 @@ Pick `kg-sonnet` to save money, `kg-opus` to minimize turns.
 
 ### Good tasks for these agents
 Scoped, symbol-level changes: change a constant/color/value, rename, adjust a function's
-behavior, and fix the tests that break. They shine when the change location is ambiguous and the
-graph can pinpoint the edit set.
+behavior, and fix the tests that break. They shine when the change location is **ambiguous** and the
+graph can pinpoint the edit set — that's where a plain agent can fail to converge at all. On
+wide-mechanical find-and-replace work a plain agent also succeeds; the graph just does it for a
+fraction of the cost and with far less run-to-run variance.
 
 ### Weak spots (know before you send)
 - **JSX/prop wiring** the graph doesn't track — if a value flows through a component prop,
   `trace` from a leaf component can dead-end. The agent is told to trace from the shared
   component's *config* symbol instead, but deeply prop-threaded changes are harder.
 - **Brand-new files / greenfield** — there's nothing to discover; a normal agent is fine.
-- **Trivial or wide-mechanical edits** — the graph is pure overhead there.
+- **Trivial single-constant edits** — no measurable benefit; the indexing is overhead.
+- **Small repos generally** — the token advantage comes from not reading whole files, so it grows
+  with repo size. On a 28-file project the comparison is roughly a wash.
 
 ## Run the tests
 

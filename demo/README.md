@@ -117,5 +117,5 @@ The baseline runs use the same command with `--model sonnet` instead of `--agent
 (reset, capture, re-verify, summarize) is a ~30-line bash script; see the per-run
 `runs/*.summary.json` for the exact tool breakdown each agent produced.
 
-Costs are one sample per cell, not a benchmark; the private experiment behind the kit ran the same
-comparison at n=40 per tier.
+Costs are one sample per cell, not a benchmark. The private experiment behind the kit ran the same
+comparison at n=5 per cell across three task tiers; see [`docs/experiment.md`](../docs/experiment.md).
