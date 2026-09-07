@@ -8,13 +8,6 @@
     "codegraph": "./bin/codegraph.js"
   },
   "main": "lib/index.js",
-  "scripts": {
-    "test": "node --test ../../test/"
-  },
-  "dependencies": {
-    "ts-morph": "^24.0.0",
-    "typescript": "^5.6.0"
-  },
   "engines": {
     "node": ">=18.0.0"
   }

@@ -136,12 +136,32 @@ kit measured and found reverts to the non-KG baseline. Use them for the graph to
 cost result. Config formats and the docs they were verified against: [`install/README.md`](install/README.md).
 
 The indexer is included: `codegraph-ext/engine/`, plain Node, TS/JS via the TypeScript compiler
-API. It has two npm dependencies (`typescript`, `ts-morph`) that `install.sh` installs for you,
-once, in the kit — nothing needs to be on your PATH and there is no CLI to download.
+API. It has two npm dependencies (`typescript`, `ts-morph`), declared as the kit's own so your
+package manager installs them normally — nothing needs to be on your PATH and there is no CLI to
+download.
 
 If `ts-morph` can't be resolved when the overlays are built, `install.sh` **won't fail** — it
 just skips the props/docs/test-linkage/annotation overlays. Core discovery
 (`locate`/`plan`/`trace`/`impact`/`apply`/`verify`) works either way.
+
+## Get the kit
+
+From npm:
+
+```bash
+npm install codegraph-mcp
+# then: node_modules/codegraph-mcp/install.sh /abs/path/to/repo-or-subdir
+```
+
+or from a clone:
+
+```bash
+git clone https://github.com/shekharnair96/codegraph-mcp.git
+cd codegraph-mcp && npm install
+```
+
+Either way `typescript` and `ts-morph` come along as ordinary dependencies — there's no build step
+and no postinstall script.
 
 ## Install (once per repo)
 

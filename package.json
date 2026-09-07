@@ -1,7 +1,6 @@
 {
   "name": "codegraph-mcp",
   "version": "0.2.1",
-  "private": true,
   "description": "Standalone code knowledge-graph MCP server for TypeScript/JavaScript repos: a built-in indexer, a symbol-aware edit loop as first-class agent tools, and KG-only coding agents for Claude Code, OpenCode, Cursor, Codex CLI and Code Puppy.",
   "keywords": [
     "mcp",
@@ -15,13 +14,32 @@
     "typescript"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shekharnair96/codegraph-mcp.git"
+  },
+  "homepage": "https://github.com/shekharnair96/codegraph-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/shekharnair96/codegraph-mcp/issues"
+  },
   "type": "commonjs",
   "bin": {
     "codegraph-mcp": "codegraph-ext/codegraph-mcp.cjs",
     "codegraph": "codegraph-ext/engine/bin/codegraph.js"
   },
+  "files": [
+    "codegraph-ext/",
+    "agents/",
+    "install/",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "ts-morph": "^24.0.0",
+    "typescript": "^5.6.0"
+  },
   "scripts": {
-    "postinstall": "cd codegraph-ext/engine && npm install --no-audit --no-fund",
     "test": "node --test test/fixture.test.cjs test/runner.test.cjs test/hosts.test.cjs",
     "cg:index": "node codegraph-ext/engine/bin/codegraph.js index",
     "cg:mcp": "node codegraph-ext/codegraph-mcp.cjs",

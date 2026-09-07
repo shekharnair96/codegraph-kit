@@ -19,8 +19,9 @@
 # monorepo, the package you want indexed). Run this repeatedly for different repos — the host
 # wiring is idempotent; each repo gets its own codegraph-ext/ + DB.
 #
-# The indexing engine lives in codegraph-ext/engine/ (plain Node, two npm deps installed here
-# once). Every target repo shares it; nothing needs to be on your PATH.
+# The indexing engine lives in codegraph-ext/engine/ (plain Node; its two npm deps — ts-morph and
+# typescript — are the kit's own dependencies, installed once). Every target repo shares it;
+# nothing needs to be on your PATH.
 #
 set -euo pipefail
 
@@ -59,6 +60,14 @@ TARGET="$(cd "$TARGET" && pwd)"   # normalize to absolute
 ENGINE="$KIT/codegraph-ext/engine"
 CG_BIN="$ENGINE/bin/codegraph.js"
 
+# Ask the question Node will ask at runtime, rather than testing a literal path: ts-morph and
+# typescript are the kit's own dependencies, so from a git clone they land in $KIT/node_modules,
+# but from `npm i codegraph-mcp` they're hoisted into the CONSUMER's node_modules, one level
+# above the kit. require.resolve from the engine's directory finds them either way.
+have_deps() {
+  node -e "require.resolve('typescript',{paths:['$ENGINE']});require.resolve('ts-morph',{paths:['$ENGINE']})" 2>/dev/null
+}
+
 # --- resolve the host list (auto/empty -> detect; nothing detected -> `none`) ---
 if [ -z "$HOSTS" ] || [ "$HOSTS" = "auto" ]; then
   DETECTED="$(node "$HOSTS_CLI" detect --target "$TARGET" --kit "$KIT" | tr '\n' ',' | sed 's/,$//')"
@@ -80,10 +89,10 @@ if [ "$MODE" = "check" ]; then
   else
     echo "    [MISSING] .codegraph/codegraph.db  (graph index)"; ok=0
   fi
-  if [ -f "$ENGINE/node_modules/typescript/package.json" ]; then
+  if have_deps; then
     echo "    [ok]      engine dependencies installed"
   else
-    echo "    [MISSING] engine dependencies (cd codegraph-ext/engine && npm install)"; ok=0
+    echo "    [MISSING] engine dependencies (run \`npm install\` in $KIT)"; ok=0
   fi
   node "$HOSTS_CLI" check --host "$HOSTS" --target "$TARGET" --kit "$KIT" || ok=0
   if [ "$ok" = "1" ]; then
@@ -95,11 +104,13 @@ if [ "$MODE" = "check" ]; then
 fi
 
 echo "==> [1/4] install the indexing engine's dependencies (once; shared by every target repo)"
-if [ -f "$ENGINE/node_modules/typescript/package.json" ]; then
-  echo "    already installed -> $ENGINE/node_modules"
+if have_deps; then
+  echo "    already installed"
 else
-  ( cd "$ENGINE" && npm install --no-audit --no-fund )
-  echo "    installed -> $ENGINE/node_modules"
+  # Only reachable from a git clone: installing via npm brings the deps along.
+  ( cd "$KIT" && npm install --no-audit --no-fund )
+  have_deps || { echo "    ERROR: ts-morph/typescript still unresolvable from $ENGINE"; exit 1; }
+  echo "    installed -> $KIT/node_modules"
 fi
 
 echo "==> [2/4] copy tooling into target repo"

@@ -22,9 +22,14 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// ts-morph comes from the kit's engine (codegraph-ext/engine/node_modules), whose location the
-// indexer records in project_metadata.engine_dir. Fall back to the target repo's own node_modules
-// (incl. a pnpm store) so a repo that already ships ts-morph needs nothing extra.
+// This file runs as a COPY inside the target repo, so plain require("ts-morph") resolves against
+// the target's node_modules — which is the first thing we try, since a repo that already ships
+// ts-morph needs nothing extra. Otherwise fall back to the kit's engine, whose location the indexer
+// records in project_metadata.engine_dir.
+//
+// Resolve FROM that directory rather than joining "node_modules/ts-morph" onto it: ts-morph is the
+// kit's own dependency, so it sits in the kit root's node_modules for a git clone and in the
+// consumer's for `npm i codegraph-mcp` — never inside engine/ itself. Node's upward walk finds both.
 function requireTsMorph() {
   const tried = [];
   const attempt = spec => {
@@ -35,6 +40,14 @@ function requireTsMorph() {
       return null;
     }
   };
+  const attemptFrom = dir => {
+    try {
+      return require(require.resolve("ts-morph", { paths: [dir] }));
+    } catch (_) {
+      tried.push(`ts-morph from ${dir}`);
+      return null;
+    }
+  };
   let m = attempt("ts-morph");
   if (m) return m;
   try {
@@ -42,14 +55,14 @@ function requireTsMorph() {
     const out = execFileSync(sqliteBin(), ["-json", dbPath, "SELECT value FROM project_metadata WHERE key='engine_dir';"], { encoding: "utf8" });
     const engineDir = out.trim() ? JSON.parse(out)[0].value : null;
     if (engineDir) {
-      m = attempt(path.join(engineDir, "node_modules", "ts-morph"));
+      m = attemptFrom(engineDir);
       if (m) return m;
     }
   } catch (_) {
     /* DB absent */
   }
   if (process.env.CODEGRAPH_ENGINE_DIR) {
-    m = attempt(path.join(process.env.CODEGRAPH_ENGINE_DIR, "node_modules", "ts-morph"));
+    m = attemptFrom(process.env.CODEGRAPH_ENGINE_DIR);
     if (m) return m;
   }
   let dir = __dirname;
@@ -61,7 +74,10 @@ function requireTsMorph() {
     }
     dir = path.dirname(dir);
   }
-  throw new Error(`[augment] cannot resolve ts-morph (tried: ${tried.join(", ")}). Run install.sh so the engine's dependencies are installed.`);
+  throw new Error(
+    `[augment] cannot resolve ts-morph (tried: ${tried.join(", ")}). ` +
+      "Run install.sh, or `npm install` in the kit."
+  );
 }
 const { Project } = requireTsMorph();
 
