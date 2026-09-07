@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new capability, host integration, or graph/tool improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do that the kit makes hard or impossible today? Describe the
+        situation, not the solution — it usually suggests a better fix than the one you'd guess.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: If you already have a shape in mind, sketch it. A new MCP tool? A new edge kind? A host?
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Existing tools or workarounds you used, and where they fell short.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Scope check
+      description: >
+        The MCP server has zero runtime dependencies and the project intends to keep it that way.
+      options:
+        - label: This can be done without adding a runtime dependency to the MCP server, or I've explained in the proposal why it can't.

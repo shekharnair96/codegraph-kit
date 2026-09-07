@@ -1,6 +1,6 @@
 # Architecture
 
-`codegraph-mcp` is a thin, dependency-free layer on top of a **codegraph SQLite database**
+`codegraph-kit` is a thin, dependency-free layer on top of a **codegraph SQLite database**
 (`<repo>/.codegraph/codegraph.db`). The base DB holds the language-level symbol graph — files,
 functions, methods, classes, constants, props, and the `calls` / `references` / `imports` edges
 between them. This kit adds overlays, a body-level full-text index, an edit loop, and an MCP

@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in the indexer, the query layer or the MCP server behaves wrongly.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead. Paste the full command and its output.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >
+        A public repo (with a commit SHA) or a minimal snippet that reproduces it. For graph-accuracy
+        bugs, the source of the symbol that was mis-indexed or missed is usually enough.
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: "v20.11.0"
+    validations:
+      required: true
+
+  - type: input
+    id: sqlite
+    attributes:
+      label: sqlite3 version
+      description: Output of `sqlite3 --version`. Must be an FTS5 build — the stock macOS one is not.
+      placeholder: "3.45.1 2024-01-30 ..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options:
+        - Claude Code
+        - OpenCode
+        - Cursor
+        - Codex CLI
+        - Code Puppy
+        - None / direct CLI use
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: codegraph-kit version
+      placeholder: "0.2.2, or a git SHA"
+    validations:
+      required: true

@@ -1,5 +1,9 @@
 # codegraph-kit — a standalone code knowledge-graph MCP server and KG-only coding agents
 
+[![test](https://github.com/shekharnair96/codegraph-kit/actions/workflows/test.yml/badge.svg)](https://github.com/shekharnair96/codegraph-kit/actions/workflows/test.yml)
+[![npm](https://img.shields.io/npm/v/codegraph-kit.svg)](https://www.npmjs.com/package/codegraph-kit)
+[![license](https://img.shields.io/npm/l/codegraph-kit.svg)](LICENSE)
+
 Point the **CodeGraph** MCP server at any TypeScript/JavaScript repo, then hand scoped changes
 to one of two **KG-only** coding agents. The agents discover code *only* through the knowledge
 graph — no grep, no file listing, no shell — which is exactly what makes them cheap and fast.
@@ -156,8 +160,8 @@ npm install codegraph-kit
 or from a clone:
 
 ```bash
-git clone https://github.com/shekharnair96/codegraph-mcp.git
-cd codegraph-mcp && npm install
+git clone https://github.com/shekharnair96/codegraph-kit.git
+cd codegraph-kit && npm install
 ```
 
 Either way `typescript` and `ts-morph` come along as ordinary dependencies — there's no build step
