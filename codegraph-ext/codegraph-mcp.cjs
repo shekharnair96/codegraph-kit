@@ -569,7 +569,7 @@ const TOOLS = {
     description:
       "Return ONE compact PASS/FAIL verdict for the affected tests over the FULL working-tree diff " +
       "(memoized + sticky-PASS: unchanged green suites are skipped, so this is cheap). A PASS here means " +
-      "the WHOLE change is green. Use this ONCE after editing; do not re-run jest/the full suite repeatedly.",
+      "the WHOLE change is green. Use this ONCE after editing; do not re-run the full suite repeatedly.",
     inputSchema: {
       type: "object",
       properties: {
@@ -584,7 +584,7 @@ const TOOLS = {
   },
   codegraph_test_one: {
     description:
-      "RAW-OUTPUT escape hatch: run ONE test file (optionally filtered by test name) and return jest's " +
+      "RAW-OUTPUT escape hatch: run ONE test file (optionally filtered by test name) and return the test runner's " +
       "FULL output. codegraph_verify is compact by design; reach for THIS only when a failure is genuinely " +
       "gnarly — a big received object, a parameterized test.each where you must see every case's actual " +
       "value, or an error whose cause is buried. Pass a test file (or a source file whose covering test to " +
@@ -593,7 +593,7 @@ const TOOLS = {
       type: "object",
       properties: {
         file: { type: "string", description: "Test file to run (or a source file -> its covering test)." },
-        name: { type: "string", description: "Optional jest -t test-name substring to run just that case." },
+        name: { type: "string", description: "Optional -t test-name substring to run just that case." },
         projectRoot: { type: "string" },
       },
       required: ["file"],

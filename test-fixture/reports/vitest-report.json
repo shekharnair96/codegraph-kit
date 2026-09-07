@@ -1,0 +1,68 @@
+{
+ "numTotalTestSuites": 2,
+ "numPassedTestSuites": 0,
+ "numFailedTestSuites": 2,
+ "numPendingTestSuites": 0,
+ "numTotalTests": 2,
+ "numPassedTests": 1,
+ "numFailedTests": 1,
+ "numPendingTests": 0,
+ "numTodoTests": 0,
+ "snapshot": {
+  "added": 0,
+  "failure": false,
+  "filesAdded": 0,
+  "filesRemoved": 0,
+  "filesRemovedList": [],
+  "filesUnmatched": 0,
+  "filesUpdated": 0,
+  "matched": 0,
+  "total": 0,
+  "unchecked": 0,
+  "uncheckedKeysByFile": [],
+  "unmatched": 0,
+  "updated": 0,
+  "didUpdate": false
+ },
+ "startTime": 1788808108290,
+ "success": false,
+ "testResults": [
+  {
+   "assertionResults": [
+    {
+     "ancestorTitles": [
+      "group"
+     ],
+     "fullName": "group passes",
+     "status": "passed",
+     "title": "passes",
+     "duration": 1.1231250000000017,
+     "failureMessages": [],
+     "meta": {},
+     "tags": [],
+     "benchmarks": []
+    },
+    {
+     "ancestorTitles": [
+      "group"
+     ],
+     "fullName": "group fails",
+     "status": "failed",
+     "title": "fails",
+     "duration": 3.667874999999995,
+     "failureMessages": [
+      "AssertionError: expected 1 to be 2 // Object.is equality\n    at /REPO/src/a.test.js:4:33\n    at file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:1628:35\n    at file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:2783:26\n    at file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3319:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3314:10)\n    at file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3299:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3257:10)\n    at file:///REPO/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3876:64"
+     ],
+     "meta": {},
+     "tags": [],
+     "benchmarks": []
+    }
+   ],
+   "startTime": 1788808108433,
+   "endTime": 1788808108437.668,
+   "status": "failed",
+   "message": "",
+   "name": "/REPO/src/a.test.js"
+  }
+ ]
+}

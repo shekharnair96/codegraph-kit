@@ -68,6 +68,7 @@ function resolveAffectedTests(changed) {
 
 // Build the test-runner argv. Default is `npx jest <extra>`; a repo can override via
 // codegraph-ext/verify.config.json:  { "runner": ["jest", "--config", "jest.unit.config.js"] }
+// or                                 { "runner": ["vitest", "run"] }
 // (the first element is the npx-resolved binary, the rest are fixed args placed before ours).
 const VERIFY_CONFIG = path.join(__dirname, "verify.config.json");
 function runnerConfig() {
@@ -79,15 +80,30 @@ function runnerConfig() {
   }
   return ["jest"];
 }
-function jestArgs(extra = []) {
+function runnerArgs(extra = []) {
   const runner = runnerConfig();
   return { args: runner.concat(extra), useConfig: runner.length > 1 };
 }
 
+// jest and vitest differ in exactly one place that matters to us: how you ask for a machine-readable
+// report. Everything downstream is shared, because vitest's json reporter deliberately emits jest's
+// result schema — numPassedTests / numTotalTests / success / testResults[].assertionResults[] with
+// status, ancestorTitles, title and failureMessages. The `-t` name filter is spelled the same way in
+// both, and both accept `-- <file>...`, so no other call site needs to know which one is configured.
+function runnerFamily() {
+  const bin = path.basename(String(runnerConfig()[0] || "")).replace(/\.(?:[cm]?js)$/, "");
+  return /vitest/i.test(bin) ? "vitest" : "jest";
+}
+function jsonReportArgs(outFile) {
+  return runnerFamily() === "vitest"
+    ? ["--reporter=json", `--outputFile=${outFile}`]
+    : ["--json", `--outputFile=${outFile}`];
+}
+
 // ---------- verify memoization ----------
-// Re-verifying without changing anything is the #1 waste (agents re-run jest after every micro-edit).
+// Re-verifying without changing anything is the #1 waste (agents re-run the suite after every micro-edit).
 // Fingerprint the exact inputs (changed files + covering tests, by content); if a prior run has the
-// same fingerprint, the verdict is reusable with NO jest run.
+// same fingerprint, the verdict is reusable with NO test run.
 const VERIFY_CACHE = path.join(APP_ROOT, ".codegraph", "verify-cache.json");
 function fileHash(rel) {
   try {
@@ -152,8 +168,10 @@ module.exports = {
   isTest,
   inferChangedFromGit,
   resolveAffectedTests,
-  jestArgs,
+  runnerArgs,
   runnerConfig,
+  runnerFamily,
+  jsonReportArgs,
   fingerprint,
   suiteFingerprint,
   coveredSources,

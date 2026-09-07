@@ -4,21 +4,23 @@
  * codegraph-ext/verify-affected.cjs  (npm run cg:verify)
  *
  * Runs the affected tests and returns ONE compact verdict - PASS/FAIL, counts, and a deduped list
- * of failures - instead of a wall of jest output. MEMOIZED: re-running without changing any input
- * file returns the cached verdict with NO jest run (kills the "verify after every micro-edit" waste).
+ * of failures - instead of a wall of runner output. MEMOIZED: re-running without changing any input
+ * file returns the cached verdict with NO test run (kills the "verify after every micro-edit" waste).
  *
  * Usage:
  *   npm run cg:verify                 # infer changed files from `git diff`
  *   npm run cg:verify -- src/a.ts     # explicit changed file(s)
  *   npm run cg:verify -- --types      # also run tsc --noEmit, report errors in changed files
- *   npm run cg:verify -- --no-cache   # force a fresh jest run
+ *   npm run cg:verify -- --no-cache   # force a fresh test run
  *
  * Exit code: 0 only if every affected test passes (and, with --types, no type errors in changed files).
  */
 const {
   inferChangedFromGit,
   resolveAffectedTests,
-  jestArgs,
+  runnerArgs,
+  jsonReportArgs,
+  runnerFamily,
   fingerprint,
   suiteFingerprint,
   readVerifyCache,
@@ -53,7 +55,7 @@ const fp = fingerprint([...changed, ...testList]) + (withTypes ? "+types" : "");
 const cache = readVerifyCache();
 if (!noCache && cache[fp]) {
   console.log(cache[fp].block);
-  console.log("[cg:verify] (cached - inputs unchanged since last run, no jest executed)\n");
+  console.log("[cg:verify] (cached - inputs unchanged since last run, no tests executed)\n");
   process.exit(cache[fp].ok ? 0 : 1);
 }
 
@@ -87,14 +89,14 @@ if (stickyPass.length) {
   );
 }
 
-// ---------- jest (only the suites that actually need re-running) ----------
+// ---------- run the tests (only the suites that actually need re-running) ----------
 if (!testList.length) {
   lines.push("tests: (no covering test found - nothing to run)");
 } else if (!toRun.length) {
   lines.push(`tests: PASS  (all ${stickyPass.length} affected suite(s) already green, coverage unchanged)`);
 } else {
-  const tmp = path.join(APP_ROOT, ".codegraph", `jest-${Date.now()}.json`);
-  const { args } = jestArgs(["--json", `--outputFile=${tmp}`, "--", ...toRun]);
+  const tmp = path.join(APP_ROOT, ".codegraph", `run-${Date.now()}.json`);
+  const { args } = runnerArgs([...jsonReportArgs(tmp), "--", ...toRun]);
   spawnSync("npx", args, { cwd: APP_ROOT, stdio: "ignore" });
   try {
     const r = JSON.parse(fs.readFileSync(tmp, "utf8"));
@@ -145,8 +147,12 @@ if (!testList.length) {
           const name = [...(t.ancestorTitles || []), t.title].join(" > ");
           const fm = t.failureMessages && t.failureMessages[0] ? t.failureMessages[0] : "";
           const msgLines = fm.split("\n").map(s => s.trim());
+          // jest opens with `expect(...)` / `Expected:` / `Received:`; vitest opens with
+          // `AssertionError: expected 1 to be 2` and emits no separate Expected/Received lines,
+          // so the exp/rec branch below simply doesn't fire for it.
           const firstMsg =
-            msgLines.find(s => /^(expect|Error|Received|Expected)/.test(s)) || "(see full jest output)";
+            msgLines.find(s => /^(expect|Error|AssertionError|Received|Expected)/.test(s)) ||
+            "(see full runner output)";
           const exp = msgLines.find(s => /^Expected/.test(s));
           const rec = msgLines.find(s => /^Received/.test(s));
           const ln = assertLine(fm, suite.name);
@@ -198,7 +204,9 @@ if (ln != null) {
     }
   } catch (_) {
     ok = false;
-    lines.push("tests: ERROR - jest produced no parseable result (run `npm run cg:test` for raw output).");
+    lines.push(
+      `tests: ERROR - ${runnerFamily()} produced no parseable result (run \`npm run cg:test\` for raw output).`
+    );
   } finally {
     try {
       fs.unlinkSync(tmp);

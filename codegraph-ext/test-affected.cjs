@@ -10,12 +10,12 @@
  * Usage:
  *   npm run cg:test                        # infer changed files from `git diff` (working tree vs HEAD)
  *   npm run cg:test -- src/a.ts src/b.tsx  # explicit changed files
- *   npm run cg:test -- --dry               # print the mapping, don't run jest
+ *   npm run cg:test -- --dry               # print the mapping, don't run the tests
  */
 const {
   inferChangedFromGit,
   resolveAffectedTests,
-  jestArgs,
+  runnerArgs,
   spawnSync,
   APP_ROOT,
 } = require("./affected.cjs");
@@ -49,11 +49,11 @@ if (!testList.length) {
   process.exit(0);
 }
 if (dry) {
-  console.log(`\n[cg:test] --dry: would run jest on ${testList.length} file(s).`);
+  console.log(`\n[cg:test] --dry: would run the tests on ${testList.length} file(s).`);
   process.exit(0);
 }
 
-console.log(`\n[cg:test] running jest on ${testList.length} file(s)…\n`);
-const { args } = jestArgs(["--", ...testList]);
+console.log(`\n[cg:test] running the tests on ${testList.length} file(s)…\n`);
+const { args } = runnerArgs(["--", ...testList]);
 const res = spawnSync("npx", args, { cwd: APP_ROOT, stdio: "inherit" });
 process.exit(res.status == null ? 1 : res.status);

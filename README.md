@@ -57,7 +57,7 @@ shell. The target repo is resolved per call as `projectRoot` arg → cwd autodet
 | `codegraph_apply` | Apply many **anchored** `old → new` replacements across files in ONE atomic call (all-or-nothing). |
 | `codegraph_apply_literal` | One-shot `oldValue → newValue` swap **scoped to a symbol's span**, so changing one metric's color can't leak into siblings. |
 | `codegraph_verify` | ONE compact PASS/FAIL verdict over the affected tests for the whole working-tree diff. **Memoized** — unchanged green suites are skipped. |
-| `codegraph_test_one` | The raw-output escape hatch: run one test file (optional `-t` name filter) and get jest's full output, only when a failure is genuinely gnarly. |
+| `codegraph_test_one` | The raw-output escape hatch: run one test file (optional `-t` name filter) and get the runner’s full output, only when a failure is genuinely gnarly. |
 
 ---
 
@@ -90,6 +90,19 @@ codegraph-kit/
   Code / OpenCode / Code Puppy / Cursor / Codex CLI you have; with none of them it prints a generic
   registration snippet you can paste anywhere. No host is mandatory.
 - The target repo must have a working local **test runner** (the agent's `verify` runs it).
+  **jest and vitest are both supported.** The default is `npx jest`; drop a
+  `codegraph-ext/verify.config.json` to change it:
+
+  ```json
+  { "runner": ["vitest", "run"] }
+  ```
+
+  The first element is the npx-resolved binary and the rest are fixed args placed before ours —
+  so `["jest", "--config", "jest.unit.config.js"]` works too. Only the machine-readable-report
+  flag differs between the two families (`--json` vs `--reporter=json`); the kit picks it from the
+  binary name. Everything downstream is shared, because vitest's json reporter emits jest's result
+  schema, and `-t` means the same thing in both. Any other runner needs the report translated —
+  `verify` will say `produced no parseable result`.
 
 (No python. No specific host. The installer is plain Node.)
 
@@ -229,6 +242,8 @@ CLI scripts, not tests.
 
 `test/fixture.test.cjs` copies `test-fixture/` to a temp dir, indexes it, builds
 the overlays, and asserts the graph shape plus `locate`/`trace`/`plan` output end to end.
+`test/runner.test.cjs` pins the jest/vitest adapter: which flags each family gets, and — against a
+real captured vitest report — that every field `cg:verify` reads is still where it expects it.
 `test/hosts.test.cjs` runs `install.sh` against a temp repo with `HOME`/`CODEX_HOME` redirected to a
 temp dir and asserts every host config parses, that the Claude subagent allowlist really does grant
 the `codegraph_*` tools and *not* Read/Grep/Glob/Bash, that re-running is byte-identical, and that
