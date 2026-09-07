@@ -126,8 +126,4 @@ test("fixture indexes, augments and answers locate/trace/plan", { timeout: 12000
   assert.strictEqual(plan.status, 0, `plan failed:\n${plan.stdout}\n${plan.stderr}`);
   assert.match(plan.stdout, /src\/utils\/series\.ts:18/);
   assert.match(plan.stdout, /src\/config\/index\.ts:2/);
-
-  // ---- the MCP server's budget/isolation regression test, against this indexed repo ----
-  const fixE = run([path.join(KIT, "codegraph-ext", "__tests__", "fix-e-budget.test.cjs"), tmp]);
-  assert.strictEqual(fixE.status, 0, `fix-e-budget failed:\n${fixE.stdout}\n${fixE.stderr}`);
 });

@@ -254,7 +254,7 @@ graph can pinpoint the edit set.
 npm test
 ```
 
-from the repo root — `npm test` names the two files explicitly, which is the only form that works.
+from the repo root — `npm test` names the files explicitly, which is the only form that works.
 Bare `node --test` and `node --test test/` both misfire: Node ≥ 22 treats positional arguments as
 glob patterns (a bare directory matches nothing and is then loaded as a module), and Node's default
 discovery claims every `test-*.cjs` in the tree — which here means the `test-one` / `test-affected`
@@ -264,6 +264,10 @@ CLI scripts, not tests.
 the overlays, and asserts the graph shape plus `locate`/`trace`/`plan` output end to end.
 `test/runner.test.cjs` pins the jest/vitest adapter: which flags each family gets, and — against a
 real captured vitest report — that every field `cg:verify` reads is still where it expects it.
+`test/budget.test.cjs` drives the real MCP server over stdio against two indexed fixture copies and
+asserts the three properties of the per-task call budget: a runaway loop still hits the wall, an
+idle gap resets the budget so a new task isn't punished for the last one's usage, and exhausting one
+repo's budget doesn't block another's.
 `test/hosts.test.cjs` runs `install.sh` against a temp repo with `HOME`/`CODEX_HOME` redirected to a
 temp dir and asserts every host config parses, that the Claude subagent allowlist really does grant
 the `codegraph_*` tools and *not* Read/Grep/Glob/Bash, that re-running is byte-identical, and that
