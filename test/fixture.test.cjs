@@ -42,7 +42,16 @@ test("fixture indexes, augments and answers locate/trace/plan", { timeout: 12000
 
   const aug = run([path.join(extDir, "augment.cjs")], { cwd: tmp });
   assert.strictEqual(aug.status, 0, `augment failed:\n${aug.stdout}\n${aug.stderr}`);
-  const body = run([path.join(extDir, "build-body-index.cjs")], { cwd: tmp });
+  // The timeout is the assertion: src/utils/pathological.ts holds a regex literal that used to
+  // make the tokenizer's string-literal scan backtrack forever. Without a kill, a regression
+  // hangs the run instead of failing it.
+  const body = run([path.join(extDir, "build-body-index.cjs")], { cwd: tmp, timeout: 60000 });
+  assert.notStrictEqual(
+    body.signal,
+    "SIGTERM",
+    "build-body-index did not finish within 60s — the body tokenizer is backtracking " +
+      "(see test/fixture/src/utils/pathological.ts)"
+  );
   assert.strictEqual(body.status, 0, `build-body-index failed:\n${body.stdout}\n${body.stderr}`);
 
   // ---- graph shape ----

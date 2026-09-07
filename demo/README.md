@@ -85,9 +85,13 @@ Notes, honestly reported:
   stayed 2x anyway.
 - The baseline B run tried a `perl -pi -e` in-place rename first (blocked — not allowlisted), which
   would have corrupted `getFieldValueAs`; its per-occurrence `Edit` fallback got the trap right.
-- Building this demo also caught a real kit bug: the body-index's string-literal regex went
-  catastrophically exponential on react-hook-form's large JSX test files (20+ CPU minutes,
-  confirmed via stack sampling). Fixed to linear per-quote patterns — 0.48s on the same corpus.
+- Building this demo also caught a real kit bug: the body-index's string-literal regex backtracked
+  catastrophically and never finished (20+ CPU minutes before it was killed, located via stack
+  sampling). The trigger turned out to be small but specific — a single **~450-byte** span in
+  `src/__tests__/logic/validateField.test.tsx` holding an RFC-5322 email regex literal, dense with
+  backslash escapes and containing all three quote characters inside its character classes. Repo
+  size had nothing to do with it; one span was enough. Fixed to linear per-quote patterns (0.48s
+  for the whole repo), with that exact literal now pinned as a fixture in the kit's test suite.
 
 ## Reproduce
 
