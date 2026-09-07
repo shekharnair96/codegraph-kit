@@ -22,7 +22,7 @@
   },
   "scripts": {
     "postinstall": "cd codegraph-ext/engine && npm install --no-audit --no-fund",
-    "test": "node --test \"test/*.test.cjs\"",
+    "test": "node --test test/fixture.test.cjs test/hosts.test.cjs",
     "cg:index": "node codegraph-ext/engine/bin/codegraph.js index",
     "cg:mcp": "node codegraph-ext/codegraph-mcp.cjs",
     "cg:refresh": "node codegraph-ext/build-body-index.cjs && node codegraph-ext/augment.cjs",
