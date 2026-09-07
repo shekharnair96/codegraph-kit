@@ -81,8 +81,11 @@ function tokensForSpan(fileRel, startLine, endLine) {
   const toks = new Set();
   (body.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) || []).forEach(w => splitIdent(w).forEach(t => toks.add(t)));
   (body.match(/#[0-9a-fA-F]{3,8}\b/g) || []).forEach(h => toks.add(h.toLowerCase()));
-  // one linear pattern per quote type — a backreference alternation here backtracks
-  // catastrophically on bodies with unbalanced quotes (hours on large JSX test files)
+  // One linear pattern per quote type. A backreference alternation here backtracks
+  // catastrophically on a body that mixes all three quote characters inside one
+  // escape-dense literal — a single ~450-byte RFC-5322 email regex was enough to hang
+  // the run for 20+ CPU minutes. Repo size is irrelevant; one span does it.
+  // Pinned as test/fixture/src/utils/pathological.ts.
   const strLit = /"(?:[^"\\\n]|\\.){2,200}"|'(?:[^'\\\n]|\\.){2,200}'|`(?:[^`\\]|\\.){2,200}`/g;
   (body.match(strLit) || []).forEach(s => {
     s.slice(1, -1)
