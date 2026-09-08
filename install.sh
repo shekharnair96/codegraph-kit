@@ -27,6 +27,7 @@ set -euo pipefail
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOSTS_CLI="$KIT/install/hosts.cjs"
+RUNNER_CLI="$KIT/install/detect-runner.cjs"
 
 # --- arg parse: --check anywhere, --host repeatable/comma-separated, first bare arg = target ---
 MODE="install"
@@ -94,6 +95,7 @@ if [ "$MODE" = "check" ]; then
   else
     echo "    [MISSING] engine dependencies (run \`npm install\` in $KIT)"; ok=0
   fi
+  node "$RUNNER_CLI" check --target "$TARGET" || ok=0
   node "$HOSTS_CLI" check --host "$HOSTS" --target "$TARGET" --kit "$KIT" || ok=0
   if [ "$ok" = "1" ]; then
     echo "==> READY. This repo is fully set up."
@@ -103,7 +105,7 @@ if [ "$MODE" = "check" ]; then
   exit 1
 fi
 
-echo "==> [1/4] install the indexing engine's dependencies (once; shared by every target repo)"
+echo "==> [1/5] install the indexing engine's dependencies (once; shared by every target repo)"
 if have_deps; then
   echo "    already installed"
 else
@@ -113,21 +115,29 @@ else
   echo "    installed -> $KIT/node_modules"
 fi
 
-echo "==> [2/4] copy tooling into target repo"
+echo "==> [2/5] copy tooling into target repo"
 mkdir -p "$TARGET/codegraph-ext"
-# copy scripts; do NOT clobber an existing annotations.json (it's the repo's durable memory)
+# copy scripts; do NOT clobber an existing annotations.json (it's the repo's durable memory).
+# The glob is *.cjs on purpose: verify.config.json and annotations.json are the repo's, not the kit's.
 for f in "$KIT"/codegraph-ext/*.cjs; do cp "$f" "$TARGET/codegraph-ext/"; done
 [ -f "$TARGET/codegraph-ext/annotations.json" ] || cp "$KIT/codegraph-ext/annotations.json" "$TARGET/codegraph-ext/"
 echo "    scripts synced -> $TARGET/codegraph-ext/"
 
-echo "==> [3/4] build the graph DB (init if needed, index, then overlays)"
+echo "==> [3/5] derive the test runner from this repo's own \`npm test\`"
+# cg:verify's verdict is only meaningful if it runs the suite this repo actually runs. Without a
+# verify.config.json affected.cjs falls back to a bare `npx jest`, which for a repo whose tests
+# need a specific --config is a DIFFERENT suite -- green for the wrong reason. Deriving it here (and
+# probing it once, for real) makes that failure loud at install time instead of silent forever.
+node "$RUNNER_CLI" emit --target "$TARGET"
+
+echo "==> [4/5] build the graph DB (init if needed, index, then overlays)"
 node "$CG_BIN" init "$TARGET"                                # idempotent: no-op if already initialized
 node "$CG_BIN" index "$TARGET"                               # always (re-)index to latest source
 ( cd "$TARGET" && node codegraph-ext/augment.cjs ) || echo "    (skipping overlay augment: needs ts-morph resolvable -- core locate/plan/trace/apply/verify still work)"
 ( cd "$TARGET" && node codegraph-ext/build-body-index.cjs ) || echo "    (skipping body index: will self-heal on first codegraph_read call)"
 echo "    DB built -> $TARGET/.codegraph/codegraph.db"
 
-echo "==> [4/4] wire up the agent host(s): $HOSTS"
+echo "==> [5/5] wire up the agent host(s): $HOSTS"
 node "$HOSTS_CLI" install --host "$HOSTS" --target "$TARGET" --kit "$KIT"
 
 echo ""
