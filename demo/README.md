@@ -11,6 +11,10 @@ hand-edited. `reel.sh` prints the banner and pipes the file into `reel.mjs`; `re
 over that replay. Regenerate with `vhs demo/reel.tape` — it costs nothing and needs no network or
 API key, since it never calls `claude`.
 
+This is the same run behind the **B kg-sonnet** row in the "Demo 2" table below and in the
+top-level README — `runs/rhf-taskB-kg.summary.json` is generated from this exact stream's `result`
+event, so the GIF and both tables can't drift apart again.
+
 Two repos, four scoped tasks, eight headless Claude Code runs — every run on a clean tree, every
 suite verified green afterwards.
 
@@ -76,7 +80,7 @@ keeping all file names as they are.
 |---|---|---|---|---|---|---|
 | A kg-sonnet | PASS 1302/1302 | **9** | 8 | **0.12** | **65k** | 36s |
 | A baseline  | PASS 1302/1302 | 11 | 10 | 0.27 | 217k | 28s |
-| B kg-sonnet | PASS 1302/1302 | 18 | 17 | **0.13** | **64k** | 36s |
+| B kg-sonnet | PASS 1302/1302 | **9** | 8 | **0.13** | **76k** | 34s |
 | B baseline  | PASS 1302/1302 | 18 | 17 | 0.22 | 354k | 46s |
 
 All four produced the correct diff: the guard landed only in `has.ts` + its test, the rename hit
@@ -84,16 +88,20 @@ all 12 sites, and `getFieldValueAs` survived intact in every run (`runs/rhf-*.di
 
 Notes, honestly reported:
 
-- On the bigger repo the KG agent's context stays small: **~65k input tokens per task vs 217–354k
-  for the baseline** (3–5x), because `codegraph_plan`/`impact`/`read` return exactly the relevant
-  sites instead of whole files and grep sweeps. That gap is what grows with repo size — cost
-  followed it (roughly half the baseline's on both tasks).
+- On the bigger repo the KG agent's context stays small: **~65–76k input tokens per task vs
+  217–354k for the baseline** (3–5x), because `codegraph_plan`/`impact`/`read` return exactly the
+  relevant sites instead of whole files and grep sweeps. That gap is what grows with repo size —
+  cost followed it (roughly half the baseline's on both tasks), and on task B it also halved the
+  turn count (9 vs 18).
 - The kg agent effectively **cannot use the plain `Edit` tool**: Claude Code requires a file to be
-  read before editing, and the kg toolset has no `Read` (that's the starvation constraint). In the
-  B run it burned 11 failed `Edit` attempts learning this, then recovered with a **single batched
-  `codegraph_apply_edit_at_site` call that landed the entire 12-site rename at once** and verified
-  green. The failed attempts are why its turn count matches the baseline's; the token/cost gap
-  stayed 2x anyway.
+  read before editing, and the kg toolset has no `Read` (that's the starvation constraint). An
+  earlier capture of the B run learned this the hard way — it burned 11 failed `Edit` attempts
+  before recovering with a single batched apply call, which is why an older version of this page
+  reported 18 turns for B kg-sonnet. The run now recorded above (`runs/rhf-taskB-kg.stream.jsonl`,
+  captured on kit 0.2.3) never touched `Edit`: one `codegraph_plan` returned the full site list and
+  one `codegraph_apply` landed all of it, then `codegraph_test_one` and `codegraph_verify` confirmed
+  green — 8 tool calls total. The failed-`Edit` behavior was specific to that earlier capture, not
+  a property of the kg agent in general.
 - The baseline B run tried a `perl -pi -e` in-place rename first (blocked — not allowlisted), which
   would have corrupted `getFieldValueAs`; its per-occurrence `Edit` fallback got the trap right.
 - Building this demo also caught a real kit bug: the body-index's string-literal regex backtracked

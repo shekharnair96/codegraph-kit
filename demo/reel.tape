@@ -21,8 +21,9 @@ Sleep 500ms
 Enter
 
 # reel.sh -> reel.mjs paces itself (REEL_DELAY_MS, default 450ms) while it
-# replays the captured stream, so just wait for it to finish.
-Sleep 8s
+# replays the captured stream (8 tool-call lines -> ~4.2s), so just wait for
+# it to finish. Re-measure this if runs/rhf-taskB-kg.stream.jsonl changes.
+Sleep 5s
 
 # Hold the final frame so the summary is readable.
 Sleep 4s
