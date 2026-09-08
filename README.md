@@ -144,7 +144,7 @@ codegraph-kit/
     manifest.json       the two tiers (name, description, per-host model id)
     kg-sonnet.json      Code Puppy rendering, Sonnet (cost-optimal default choice)
     kg-opus.json        Code Puppy rendering, Opus (fewest turns, ~4× cost)
-  install/              host adapters (Claude Code, OpenCode, Code Puppy, Cursor, Codex CLI)
+  install/              host adapters + test-runner detection (verify.config.json)
   test/                 the end-to-end tests (`npm test`)
   test-fixture/         a small TS/TSX/JS project the tests index and query
   docs/                 deck + experiment figures
@@ -160,8 +160,26 @@ codegraph-kit/
   Code / OpenCode / Code Puppy / Cursor / Codex CLI you have; with none of them it prints a generic
   registration snippet you can paste anywhere. No host is mandatory.
 - The target repo must have a working local **test runner** (the agent's `verify` runs it).
-  **jest and vitest are both supported.** The default is `npx jest`; drop a
-  `codegraph-ext/verify.config.json` to change it:
+  **jest and vitest are both supported.** The installer *derives* the command from your own
+  `scripts.test` and writes it to `codegraph-ext/verify.config.json`, so `verify` runs the suite
+  `npm test` runs — a repo whose tests only work under `jest --config ./scripts/jest/jest.config.js`
+  gets exactly that, not a bare `npx jest` judging some other set of files. It then proves the
+  derived command once, against a real test file, before calling the install done:
+
+  ```
+  ==> [3/5] derive the test runner from this repo's own `npm test`
+      derived from `jest --config ./scripts/jest/jest.config.js`  ->  npx jest --config ./scripts/jest/jest.config.js
+      probe: src/__tests__/controller.server.test.tsx -> 2 test(s) reported
+  ```
+
+  Watch/coverage/reporter flags are stripped (the kit supplies its own reporter and file list);
+  config, rootDir, projects and worker flags are kept, as is anything it doesn't recognise.
+
+  **If your runner isn't one it can express, it writes nothing and tells you why** — `node --test`,
+  mocha, `turbo run test`, or a command that needs an environment variable
+  (`NODE_OPTIONS=--experimental-vm-modules jest`) are all refused rather than guessed at, because a
+  runner that's silently wrong produces a *verdict about the wrong suite*. Write the file yourself
+  in that case, and it will never be overwritten:
 
   ```json
   { "runner": ["vitest", "run"] }
@@ -173,6 +191,9 @@ codegraph-kit/
   binary name. Everything downstream is shared, because vitest's json reporter emits jest's result
   schema, and `-t` means the same thing in both. Any other runner needs the report translated —
   `verify` will say `produced no parseable result`.
+
+  `./install.sh --check <repo>` re-runs that probe, so a runner that has drifted shows up as
+  `[MISSING] test runner produces no parseable report` instead of as a green verdict later.
 
 (No python. No specific host. The installer is plain Node.)
 
