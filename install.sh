@@ -122,6 +122,24 @@ mkdir -p "$TARGET/codegraph-ext"
 for f in "$KIT"/codegraph-ext/*.cjs; do cp "$f" "$TARGET/codegraph-ext/"; done
 [ -f "$TARGET/codegraph-ext/annotations.json" ] || cp "$KIT/codegraph-ext/annotations.json" "$TARGET/codegraph-ext/"
 echo "    scripts synced -> $TARGET/codegraph-ext/"
+# Belt-and-braces: a verify-cache.json written by an older CACHE_SCHEMA can hold verdicts computed
+# under different (possibly buggy) verdict semantics. readVerifyCache() already discards a
+# schema-mismatched file on its own at read time -- this just saves the one wasted "discard and
+# re-run" pass for a repo that happens to reinstall. It is NOT a substitute for that read-path
+# check: a repo nobody reinstalls would otherwise keep serving a stale verdict forever.
+node -e "
+try {
+  const c = require('$TARGET/codegraph-ext/affected.cjs');
+  const fs = require('fs');
+  if (fs.existsSync(c.VERIFY_CACHE)) {
+    const raw = JSON.parse(fs.readFileSync(c.VERIFY_CACHE, 'utf8'));
+    if (!raw || typeof raw !== 'object' || raw[c.SCHEMA_KEY] !== c.CACHE_SCHEMA) {
+      fs.unlinkSync(c.VERIFY_CACHE);
+      console.log('    cleared stale .codegraph/verify-cache.json (schema mismatch)');
+    }
+  }
+} catch (_) { /* best-effort */ }
+"
 
 echo "==> [3/5] derive the test runner from this repo's own \`npm test\`"
 # cg:verify's verdict is only meaningful if it runs the suite this repo actually runs. Without a

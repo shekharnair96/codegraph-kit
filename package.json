@@ -1,6 +1,6 @@
 {
   "name": "codegraph-kit",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Standalone code knowledge-graph MCP server for TypeScript/JavaScript repos: a built-in indexer, a symbol-aware edit loop as first-class agent tools, and KG-only coding agents for Claude Code, OpenCode, Cursor, Codex CLI and Code Puppy.",
   "keywords": [
     "mcp",
@@ -40,7 +40,7 @@
     "typescript": "^5.6.0"
   },
   "scripts": {
-    "test": "node --test test/fixture.test.cjs test/runner.test.cjs test/detect-runner.test.cjs test/budget.test.cjs test/hosts.test.cjs",
+    "test": "node --test test/fixture.test.cjs test/runner.test.cjs test/detect-runner.test.cjs test/budget.test.cjs test/hosts.test.cjs test/verify-cache.test.cjs",
     "cg:index": "node codegraph-ext/engine/bin/codegraph.js index",
     "cg:mcp": "node codegraph-ext/codegraph-mcp.cjs",
     "cg:refresh": "node codegraph-ext/build-body-index.cjs && node codegraph-ext/augment.cjs",

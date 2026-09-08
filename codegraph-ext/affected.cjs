@@ -105,6 +105,30 @@ function jsonReportArgs(outFile) {
 // Fingerprint the exact inputs (changed files + covering tests, by content); if a prior run has the
 // same fingerprint, the verdict is reusable with NO test run.
 const VERIFY_CACHE = path.join(APP_ROOT, ".codegraph", "verify-cache.json");
+
+// CACHE_SCHEMA — bump this INTEGER any time the MEANING of a cached verdict changes, i.e. any time
+// testReportVerdict()/suiteRanOk() (above) change what counts as PASS/FAIL. A cache entry's `ok` bit
+// is only trustworthy under the semantics that produced it; serving it after the semantics changed
+// re-plays the old bug from a stale file.
+//
+// This constant exists because of exactly that: commit 6a01248 fixed a suite that fails to LOAD
+// (syntax error, bad import, throw at module scope) being scored as a PASS — such a suite reports
+// numTotalTests: 0 AND numFailedTests: 0, so counting failed assertions alone called it green. The
+// fix changed how a fresh run computes `ok`, but did nothing about verdicts a PRE-fix run had already
+// written to verify-cache.json — so every cached entry from before 6a01248 kept serving its old,
+// wrong, green verdict forever (the whole-run cache never re-derives on a fingerprint hit, and the
+// sticky per-suite cache is even stickier: an unrelated fix doesn't change the poisoned suite's own
+// fingerprint, so it stays skipped indefinitely).
+//
+// readVerifyCache() discards the ENTIRE file whenever its stamp doesn't match this constant, so the
+// fix is: bump CACHE_SCHEMA in the same commit that changes verdict semantics, and every existing
+// cache — whole-run and sticky-suite alike — self-heals on the next run (one wasted test run, then
+// clean). Do not reuse the reserved `__schema__` key for anything else; it can't collide with a real
+// cache entry because those are keyed by a 32-char md5 fingerprint (optionally +"+types") or by
+// `suite:<path>`.
+const CACHE_SCHEMA = 2;
+const SCHEMA_KEY = "__schema__";
+
 function fileHash(rel) {
   try {
     return crypto
@@ -123,9 +147,33 @@ function fingerprint(files) {
   });
   return h.digest("hex");
 }
+
+// A whole-run cache entry ({ ok, block }) is self-inconsistent if it claims `ok: true` but its own
+// rendered block reports a FAIL — e.g. a suite that failed to load, scored green by the pre-6a01248
+// bug. That shape can only reach us from a cache the schema check above should already have dropped,
+// but checking it directly is cheap, doesn't need a version bump to keep working, and is a second
+// line of defense against any other path that could write a corrupt entry.
+function isPoisonedEntry(v) {
+  if (!v || typeof v !== "object") return true;
+  if (typeof v.block === "string" && v.ok === true && /\b(verdict|tests):\s*FAIL\b/i.test(v.block)) {
+    return true;
+  }
+  return false;
+}
+
 function readVerifyCache() {
   try {
-    return JSON.parse(fs.readFileSync(VERIFY_CACHE, "utf8"));
+    const obj = JSON.parse(fs.readFileSync(VERIFY_CACHE, "utf8"));
+    if (!obj || typeof obj !== "object" || Array.isArray(obj) || obj[SCHEMA_KEY] !== CACHE_SCHEMA) {
+      return {}; // absent/legacy/malformed stamp -> discard the WHOLE file, don't trust any entry in it
+    }
+    const out = { [SCHEMA_KEY]: CACHE_SCHEMA };
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === SCHEMA_KEY) continue;
+      if (isPoisonedEntry(v)) continue; // corrupt entry: drop it, force a re-run for its key
+      out[k] = v;
+    }
+    return out;
   } catch (_) {
     return {};
   }
@@ -133,7 +181,7 @@ function readVerifyCache() {
 function writeVerifyCache(obj) {
   try {
     fs.mkdirSync(path.dirname(VERIFY_CACHE), { recursive: true });
-    fs.writeFileSync(VERIFY_CACHE, JSON.stringify(obj));
+    fs.writeFileSync(VERIFY_CACHE, JSON.stringify({ ...obj, [SCHEMA_KEY]: CACHE_SCHEMA }));
   } catch (_) {
     /* best-effort */
   }
@@ -212,6 +260,9 @@ module.exports = {
   testReportVerdict,
   readVerifyCache,
   writeVerifyCache,
+  CACHE_SCHEMA,
+  SCHEMA_KEY,
+  VERIFY_CACHE,
   spawnSync,
   fs,
   path,
