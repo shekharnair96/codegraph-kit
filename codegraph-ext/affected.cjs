@@ -159,6 +159,39 @@ function suiteFingerprint(testRel) {
   return fingerprint([testRel, ...coveredSources(testRel)]);
 }
 
+// ---------- reading the runner's report ----------
+// A suite that fails to LOAD - syntax error, unresolvable import, a throw at module scope - never
+// reaches an assertion, so it reports numTotalTests: 0 AND numFailedTests: 0. Deciding the verdict
+// from failed-assertion counts alone therefore called it green, and the MCP layer latched that PASS
+// for the rest of the task.
+//
+// In the serialized `--json` report a crashed suite is: zero assertionResults, plus a suite-level
+// error. jest puts that error in `message` with `status: "failed"` (`testExecError` exists only on
+// jest's in-process result object, never in the JSON); vitest's json reporter mirrors jest's schema.
+// Both are checked, plus testExecError, so no runner shape slips through as a false green.
+function suiteRanOk(suite) {
+  if ((suite.assertionResults || []).length) return true; // it executed something
+  // Zero assertions: either it crashed, or the file genuinely holds no tests - which jest also
+  // reports as a failed suite with a message ("must contain at least one test"). Either way the
+  // distinguishing signal is a suite-level error, not the assertion count.
+  const msg = suite.message || suite.failureMessage || suite.testExecError || "";
+  return !(suite.status === "failed" || String(msg).trim());
+}
+
+// The single source of truth for "did the test phase pass". Failed-assertion count alone misses
+// crashes, and `success` alone has been unreliable across runner versions, so a green verdict
+// requires all of: the runner is happy, nothing asserted false, and every suite actually ran.
+function testReportVerdict(r) {
+  const crashed = (r.testResults || []).filter(s => !suiteRanOk(s));
+  const failed = r.numFailedTests || 0;
+  const runtimeErrors = r.numRuntimeErrorTestSuites || 0;
+  return {
+    ok: !!r.success && failed === 0 && crashed.length === 0 && runtimeErrors === 0,
+    failed,
+    crashed,
+  };
+}
+
 module.exports = {
   APP_ROOT,
   DB,
@@ -175,6 +208,8 @@ module.exports = {
   fingerprint,
   suiteFingerprint,
   coveredSources,
+  suiteRanOk,
+  testReportVerdict,
   readVerifyCache,
   writeVerifyCache,
   spawnSync,

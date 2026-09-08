@@ -36,6 +36,8 @@ script rather than globbed — Node's default discovery pattern would otherwise 
 - `test/fixture.test.cjs` — index the fixture, build the overlays, assert graph shape and the
   user-facing `query.cjs` output.
 - `test/runner.test.cjs` — the affected-test runner.
+- `test/detect-runner.test.cjs` — deriving `verify.config.json` from the target repo's own
+  `scripts.test`, including every case where detection must refuse instead of guessing.
 - `test/budget.test.cjs` — drives the real MCP server over stdio against two indexed fixture
   copies and asserts the three properties of the per-task call budget.
 - `test/hosts.test.cjs` — the generated host configurations.
@@ -50,6 +52,25 @@ it fails before your fix: a test that passes against the unpatched code is not t
 - Match the surrounding style. There is no linter; the code is plain CommonJS with no build step,
   and comments explain *why*, not *what*.
 - New runtime dependencies need a reason in the PR description. The MCP server itself has zero.
+
+## The target repo's test runner
+
+`install/detect-runner.cjs` reads the target's `scripts.test` and writes
+`codegraph-ext/verify.config.json` so `cg:verify` runs *that repo's* suite rather than a bare
+`npx jest`. It is deliberately conservative: it keeps flags it does not recognise, and it refuses
+outright — writing nothing and printing why — when the command is something the config schema
+cannot express (an env var like `NODE_OPTIONS`, a shell pipeline, a non-jest/vitest runner).
+
+Two rules to preserve if you touch it:
+
+- **Refuse rather than guess.** A wrong runner produces a verdict about the wrong suite, which is
+  worse than no verdict at all.
+- **Drop a flag together with its value.** A dropped `--reporter` that leaves `verbose` behind
+  becomes a bare positional, which jest reads as a path filter. The arity table exists for that.
+
+After writing the config the installer *probes* it: it asks the runner which files its config owns,
+runs one of them, and insists on a parseable report with at least one test. The same probe is a
+line in `./install.sh --check`.
 
 ## Adding a host
 

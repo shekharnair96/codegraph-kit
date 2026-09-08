@@ -109,3 +109,47 @@ test("a real vitest report carries every field cg:verify reads", () => {
   assert.ok(ln, "no stack frame points back into the test file");
   assert.strictEqual(parseInt(ln[1], 10), 4);
 });
+
+test("a suite that fails to LOAD is a FAIL verdict, not a silent PASS", () => {
+  const { suiteRanOk, testReportVerdict } = require(path.join(__dirname, "..", "codegraph-ext", "affected.cjs"));
+
+  // Captured from a real `npx jest --json` run on a file with a syntax error, paths rewritten to
+  // /REPO. The shape is the whole point: jest reports the crash with numTotalTests: 0 AND
+  // numFailedTests: 0, so counting failed assertions alone scored it green. cg:verify printed
+  // "tests: FAIL (0/0 passed, 0 failed)" directly above "verdict: PASS", and the MCP layer latched
+  // that PASS for the remainder of the task - an agent could ship a red tree believing it green.
+  const r = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "test-fixture", "reports", "jest-suite-load-failure.json"), "utf8")
+  );
+
+  // Pin the trap itself: if these ever stop holding, this test is no longer covering the bug.
+  assert.strictEqual(r.numTotalTests, 0);
+  assert.strictEqual(r.numFailedTests, 0);
+  assert.strictEqual(r.testResults[0].assertionResults.length, 0);
+
+  const v = testReportVerdict(r);
+  assert.strictEqual(v.ok, false, "a suite that never executed must not produce a PASS verdict");
+  assert.strictEqual(v.crashed.length, 1);
+  assert.ok(/Test suite failed to run/.test(v.crashed[0].message));
+
+  // jest puts the suite-level error in `message` with status "failed"; `testExecError` and
+  // `failureMessage` exist only on jest's in-process object, never in the JSON. Reading only those
+  // was the first attempt at this fix and it silently did nothing.
+  assert.strictEqual(r.testResults[0].testExecError, undefined);
+  assert.strictEqual(r.testResults[0].failureMessage, undefined);
+  assert.strictEqual(suiteRanOk(r.testResults[0]), false);
+
+  // A genuinely green report must still pass, and a suite with assertions must still count as run.
+  const green = { success: true, numFailedTests: 0, testResults: [{ name: "/REPO/a.test.ts", status: "passed", assertionResults: [{ status: "passed" }] }] };
+  assert.strictEqual(testReportVerdict(green).ok, true);
+  assert.strictEqual(suiteRanOk(green.testResults[0]), true);
+
+  // A failing assertion is a FAIL but NOT a crash - it has an actionable file:line, so it must not
+  // be routed through the "suite failed to run" branch.
+  const red = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "test-fixture", "reports", "vitest-report.json"), "utf8")
+  );
+  const rv = testReportVerdict(red);
+  assert.strictEqual(rv.ok, false);
+  assert.strictEqual(rv.crashed.length, 0);
+});

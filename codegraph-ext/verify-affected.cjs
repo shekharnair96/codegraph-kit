@@ -23,6 +23,8 @@ const {
   runnerFamily,
   fingerprint,
   suiteFingerprint,
+  suiteRanOk,
+  testReportVerdict,
   readVerifyCache,
   writeVerifyCache,
   spawnSync,
@@ -103,20 +105,49 @@ if (!testList.length) {
     const pass = r.numPassedTests || 0;
     const total = r.numTotalTests || 0;
     const failed = r.numFailedTests || 0;
-    lines.push(
-      `tests: ${r.success && failed === 0 ? "PASS" : "FAIL"}  (${pass}/${total} passed, ${failed} failed` +
-        `${stickyPass.length ? `, +${stickyPass.length} sticky-PASS suite(s)` : ""})`
-    );
-    // per-suite result -> update sticky cache: PASS sticks, FAIL always re-runs until fixed
-    const failedSuites = new Set();
+    // A suite that fails to LOAD (syntax error, bad import, throwing module scope) never runs an
+    // assertion, so it contributes 0 to numFailedTests. Counting only assertion failures therefore
+    // reported `verdict: PASS` for a suite that never executed - and the MCP layer latches any PASS
+    // for the rest of the task. Treat an unexecuted suite as a failure in its own right.
+    const verdict = testReportVerdict(r);
+    const crashed = verdict.crashed;
+    // per-suite result -> update sticky cache: PASS sticks, FAIL always re-runs until fixed. A suite
+    // that never executed must not be cached green - its fingerprint is unchanged by the fix, so a
+    // sticky entry would skip it for good.
     for (const suite of r.testResults || []) {
       const rel = path.relative(APP_ROOT, suite.name).split(path.sep).join("/");
-      const suitePassed = (suite.assertionResults || []).every(t => t.status !== "failed");
+      const suitePassed =
+        suiteRanOk(suite) && (suite.assertionResults || []).every(t => t.status !== "failed");
       if (suiteFp[rel] != null) cache[suiteKey(rel)] = { ok: suitePassed, fp: suiteFp[rel] };
-      if (!suitePassed) failedSuites.add(rel);
+    }
+    // `(0/0 passed, 0 failed)` on its own reads like "nothing was wrong". Name the suites that never
+    // executed in the headline count, so the state is unambiguous at a glance.
+    lines.push(
+      `tests: ${verdict.ok ? "PASS" : "FAIL"}  ` +
+        `(${pass}/${total} passed, ${failed} failed` +
+        `${crashed.length ? `, ${crashed.length} suite(s) failed to run` : ""}` +
+        `${stickyPass.length ? `, +${stickyPass.length} sticky-PASS suite(s)` : ""})`
+    );
+    if (!verdict.ok) ok = false;
+    if (crashed.length) {
+      for (const c of crashed.map(s => ({
+        rel: path.relative(APP_ROOT, s.name).split(path.sep).join("/"),
+        // jest serializes the suite-level error as `message`; the other two are vitest/in-process shapes.
+        msg: String(s.message || s.failureMessage || s.testExecError || ""),
+      }))) {
+        lines.push(`    ${c.rel}: suite failed to run (0 tests executed)`);
+        // First non-blank line of the runner's message is the syntax/import error itself; the rest
+        // is a babel/jest stack the model can't act on.
+        const first = c.msg
+          .replace(/\u001b\[[0-9;]*m/g, "")
+          .split("\n")
+          .map(s => s.trim())
+          .find(s => s && !/^●/.test(s));
+        if (first) lines.push(`       ${first}`);
+      }
+      lines.push(`    -> the suite must load before its assertions mean anything; fix the error above first.`);
     }
     if (failed) {
-      ok = false;
       const seen = new Set();
       const srcCache = new Map();
       const srcLine = (abs, n) => {
