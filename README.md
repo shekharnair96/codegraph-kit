@@ -14,6 +14,11 @@ host's tool allowlist rather than requested in a prompt.
 *Replay of a real, captured run — no Read/Grep/Bash tools in the allowlist, only `mcp__codegraph__*`
 plus Edit/Write/MultiEdit (unused here). See [`demo/README.md`](demo/README.md) for the raw stream.*
 
+**Known issue (being reconciled):** the GIF above and the task-B `kg-sonnet` row in the table below
+were captured from two different runs of the same task, on different dates, and currently disagree
+on turns/cost/tokens. A fresh, single canonical run is being captured to back both; until then,
+treat the numbers as unreconciled.
+
 ## What that buys you
 
 Two scoped tasks on [react-hook-form](https://github.com/react-hook-form/react-hook-form) (v7.87.0,
