@@ -1,5 +1,16 @@
 # Demo: KG-only agent vs. plain agent
 
+## GIF (`reel.gif`)
+
+The GIF embedded in the top-level README (`demo/reel.gif`) is **not a live re-run** — it replays the
+NDJSON stream captured from a real, single `claude -p ... --agent kg-sonnet` invocation of task B
+against react-hook-form, saved verbatim at [`runs/rhf-taskB-kg.stream.jsonl`](runs/rhf-taskB-kg.stream.jsonl).
+`reel.mjs` reads that raw stream and prints one line per tool call plus a final summary computed
+from the stream's own `result` event (turns, cost, input tokens) — nothing in the numbers is
+hand-edited. `reel.sh` prints the banner and pipes the file into `reel.mjs`; `reel.tape` drives VHS
+over that replay. Regenerate with `vhs demo/reel.tape` — it costs nothing and needs no network or
+API key, since it never calls `claude`.
+
 Two repos, four scoped tasks, eight headless Claude Code runs — every run on a clean tree, every
 suite verified green afterwards.
 

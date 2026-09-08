@@ -9,6 +9,11 @@ one of two **KG-only** coding agents. The agents discover code *only* through th
 no grep, no file listing, no shell. That restriction is the whole idea, and it is enforced by the
 host's tool allowlist rather than requested in a prompt.
 
+![Demo: kg-sonnet renames a function across react-hook-form via codegraph tools only, then verifies the suite](demo/reel.gif)
+
+*Replay of a real, captured run — no Read/Grep/Bash tools in the allowlist, only `mcp__codegraph__*`
+plus Edit/Write/MultiEdit (unused here). See [`demo/README.md`](demo/README.md) for the raw stream.*
+
 ## What that buys you
 
 Two scoped tasks on [react-hook-form](https://github.com/react-hook-form/react-hook-form) (v7.87.0,
